@@ -1,6 +1,6 @@
-//! HTTP输入组件
+//! HTTP input component
 //!
-//! 从HTTP端点接收数据
+//! Receive data from HTTP endpoints
 
 use async_trait::async_trait;
 use axum::{extract::State, http::StatusCode, routing::post, Router};
@@ -14,18 +14,18 @@ use tokio::sync::Mutex;
 use crate::input::{Ack, NoopAck};
 use crate::{input::Input, Error, MessageBatch};
 
-/// HTTP输入配置
+/// HTTP input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpInputConfig {
-    /// 监听地址
+    /// Listening address
     pub address: String,
-    /// 路径
+    /// Path
     pub path: String,
-    /// 是否启用CORS
+    /// Whether CORS is enabled
     pub cors_enabled: Option<bool>,
 }
 
-/// HTTP输入组件
+/// HTTP input component
 pub struct HttpInput {
     config: HttpInputConfig,
     queue: Arc<Mutex<VecDeque<MessageBatch>>>,
@@ -33,11 +33,9 @@ pub struct HttpInput {
     connected: AtomicBool,
 }
 
-/// 共享状态
 type AppState = Arc<Mutex<VecDeque<MessageBatch>>>;
 
 impl HttpInput {
-    /// 创建一个新的HTTP输入组件
     pub fn new(config: &HttpInputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -47,7 +45,6 @@ impl HttpInput {
         })
     }
 
-    /// 处理HTTP请求
     async fn handle_request(
         State(state): State<AppState>,
         body: axum::extract::Json<serde_json::Value>,
@@ -74,39 +71,35 @@ impl Input for HttpInput {
         let path = self.config.path.clone();
         let address = self.config.address.clone();
 
-        // 创建HTTP服务器
         let app = Router::new()
             .route(&path, post(Self::handle_request))
             .with_state(queue);
 
-        // 解析地址
         let addr: SocketAddr = address
             .parse()
-            .map_err(|e| Error::Config(format!("无效的地址 {}: {}", address, e)))?;
+            .map_err(|e| Error::Config(format!("Invalid address {}: {}", address, e)))?;
 
-        // 启动服务器
         let server_handle = tokio::spawn(async move {
             axum::Server::bind(&addr)
                 .serve(app.into_make_service())
                 .await
-                .map_err(|e| Error::Connection(format!("HTTP服务器错误: {}", e)))
+                .map_err(|e| Error::Connection(format!("HTTP server error: {}", e)))
         });
 
         let server_handle_arc = self.server_handle.clone();
         let mut server_handle_arc_mutex = server_handle_arc.lock().await;
         *server_handle_arc_mutex = Some(server_handle);
-        self.connected
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.connected.store(true, Ordering::SeqCst);
 
         Ok(())
     }
 
     async fn read(&self) -> Result<(MessageBatch, Arc<dyn Ack>), Error> {
         if !self.connected.load(Ordering::SeqCst) {
-            return Err(Error::Connection("输入未连接".to_string()));
+            return Err(Error::Connection("The input is not connected".to_string()));
         }
 
-        // 尝试从队列中获取消息
+        // Try to get a message from the queue
         let msg_option;
         {
             let mut queue = self.queue.lock().await;
@@ -116,9 +109,9 @@ impl Input for HttpInput {
         if let Some(msg) = msg_option {
             Ok((msg, Arc::new(NoopAck)))
         } else {
-            // 如果队列为空，则等待一段时间后返回错误
+            // If the queue is empty, an error is returned after waiting for a while
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            Err(Error::Processing("队列为空".to_string()))
+            Err(Error::Processing("The queue is empty".to_string()))
         }
     }
 

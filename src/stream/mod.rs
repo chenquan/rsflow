@@ -1,6 +1,6 @@
-//! 流组件模块
+//! Stream component module
 //!
-//! 流是完整的数据处理单元，包含输入、管道和输出。
+//! A stream is a complete data processing unit, containing input, pipeline, and output.
 
 use crate::input::Ack;
 use crate::{input::Input, output::Output, pipeline::Pipeline, Error, MessageBatch};
@@ -10,7 +10,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info};
 use waitgroup::{WaitGroup, Worker};
 
-/// 流结构体，包含输入、管道、输出和可选的缓冲区
+/// A stream structure, containing input, pipe, output, and an optional buffer.
 pub struct Stream {
     input: Arc<dyn Input>,
     pipeline: Arc<Pipeline>,
@@ -19,7 +19,7 @@ pub struct Stream {
 }
 
 impl Stream {
-    /// 创建一个新的流
+    /// Create a new stream.
     pub fn new(
         input: Arc<dyn Input>,
         pipeline: Pipeline,
@@ -34,9 +34,9 @@ impl Stream {
         }
     }
 
-    /// 运行流处理
+    /// Running stream processing
     pub async fn run(&mut self) -> Result<(), Error> {
-        // 连接输入和输出
+        // Connecting input and output
         self.input.connect().await?;
         self.output.connect().await?;
 
@@ -46,7 +46,7 @@ impl Stream {
         let input = Arc::clone(&self.input);
 
         let wg = WaitGroup::new();
-        // 输入
+
         let worker = wg.worker();
         let output_arc = self.output.clone();
         tokio::spawn(Self::do_input(input, input_sender, worker, output_arc));
@@ -63,11 +63,11 @@ impl Stream {
                 loop {
                     match input_receiver.recv_async().await {
                         Ok((msg, ack)) => {
-                            // 通过管道处理消息
+                            // Processing messages through a pipeline
                             debug!("Processing input message: {:?}", &msg.as_string());
                             let processed = pipeline.process(msg).await;
 
-                            // 处理结果消息
+                            // Processing result message
                             match processed {
                                 Ok(msgs) => {
                                     for x in &msgs {
@@ -110,7 +110,7 @@ impl Stream {
                         }
                     }
 
-                    // 确认消息已成功处理
+                    // Confirmation that the message has been successfully processed.
                     if size == &success_cnt {
                         msg.1.ack().await;
                     }

@@ -1,6 +1,6 @@
-//! 内存输入组件
+//! Memory input component
 //!
-//! 从内存中的消息队列读取数据
+//! Read data from an in-memory message queue
 
 use std::collections::VecDeque;
 use std::sync::atomic::AtomicBool;
@@ -14,25 +14,25 @@ use crate::input::Ack;
 use crate::input::NoopAck;
 use crate::{input::Input, Error, MessageBatch};
 
-/// 内存输入配置
+/// Memory input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryInputConfig {
-    /// 内存队列的初始消息
+    /// Initial message for the memory queue
     pub messages: Option<Vec<String>>,
 }
 
-/// 内存输入组件
+/// Memory input component
 pub struct MemoryInput {
     queue: Arc<Mutex<VecDeque<MessageBatch>>>,
     connected: AtomicBool,
 }
 
 impl MemoryInput {
-    /// 创建一个新的内存输入组件
+    /// Create a new memory input component
     pub fn new(config: &MemoryInputConfig) -> Result<Self, Error> {
         let mut queue = VecDeque::new();
 
-        // 如果配置中有初始消息，则添加到队列中
+        // If there is an initial message in the configuration, it is added to the queue
         if let Some(messages) = &config.messages {
             for msg_str in messages {
                 queue.push_back(MessageBatch::from_string(msg_str));
@@ -45,7 +45,7 @@ impl MemoryInput {
         })
     }
 
-    /// 向内存输入添加消息
+    /// Add a message to the memory input
     pub async fn push(&self, msg: MessageBatch) -> Result<(), Error> {
         let mut queue = self.queue.lock().await;
         queue.push_back(msg);
@@ -63,7 +63,7 @@ impl Input for MemoryInput {
 
     async fn read(&self) -> Result<(MessageBatch, Arc<dyn Ack>), Error> {
         if !self.connected.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(Error::Connection("输入未连接".to_string()));
+            return Err(Error::Connection("The input is not connected".to_string()));
         }
 
         // 尝试从队列中获取消息

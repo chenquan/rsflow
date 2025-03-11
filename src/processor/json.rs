@@ -1,6 +1,6 @@
-//! Arrow处理器组件
+//! Arrow Processor Components
 //!
-//! 用于在二进制数据和Arrow格式之间进行转换的处理器
+//! A processor for converting between binary data and the Arrow format
 
 use crate::processor::Processor;
 use crate::{Bytes, Content, Error, MessageBatch};
@@ -14,9 +14,9 @@ use datafusion::arrow::record_batch::RecordBatch;
 use serde_json::Value;
 use std::sync::Arc;
 
-/// Arrow格式转换处理器配置
+/// Arrow format conversion processor configuration
 
-/// Arrow格式转换处理器
+/// Arrow Format Conversion Processor
 
 pub struct JsonToArrowProcessor;
 
@@ -24,7 +24,9 @@ pub struct JsonToArrowProcessor;
 impl Processor for JsonToArrowProcessor {
     async fn process(&self, msg_batch: MessageBatch) -> Result<Vec<MessageBatch>, Error> {
         match msg_batch.content {
-            Content::Arrow(_) => Err(Error::Processing("输入必须是二进制数据".to_string())),
+            Content::Arrow(_) => Err(Error::Processing(
+                "The input must be binary data".to_string(),
+            )),
             Content::Binary(v) => {
                 let mut batches = Vec::with_capacity(v.len());
                 for x in v {
@@ -37,7 +39,7 @@ impl Processor for JsonToArrowProcessor {
 
                 let schema = batches[0].schema();
                 let batch = arrow::compute::concat_batches(&schema, &batches)
-                    .map_err(|e| Error::Processing(format!("合并批次失败: {}", e)))?;
+                    .map_err(|e| Error::Processing(format!("Merge batches failed: {}", e)))?;
                 Ok(vec![MessageBatch::new_arrow(batch)])
             }
         }
@@ -58,7 +60,9 @@ impl Processor for ArrowToJsonProcessor {
                 let json_data = arrow_to_json(&v)?;
                 Ok(vec![MessageBatch::new_binary(vec![json_data])])
             }
-            Content::Binary(_) => Err(Error::Processing("输入必须是Arrow格式".to_string())),
+            Content::Binary(_) => Err(Error::Processing(
+                "The input must be in Arrow format".to_string(),
+            )),
         }
     }
 
@@ -136,7 +140,7 @@ fn json_to_arrow(content: &Bytes) -> Result<RecordBatch, Error> {
     }
 }
 
-/// 将Arrow格式转换为JSON
+/// Convert Arrow format to JSON
 fn arrow_to_json(batch: &RecordBatch) -> Result<Vec<u8>, Error> {
     // 使用Arrow的JSON序列化功能
     let mut buf = Vec::new();

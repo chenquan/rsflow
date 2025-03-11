@@ -1,6 +1,6 @@
-//! 文件输入组件
+//! File Input Component
 //!
-//! 从文件系统读取数据
+//! Read data from the file system
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use crate::input::{Ack, NoopAck};
 use crate::{input::Input, Error, MessageBatch};
 
-/// 文件输入配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileInputConfig {
     /// 输入文件路径
@@ -51,13 +50,13 @@ impl Input for FileInput {
     async fn connect(&self) -> Result<(), Error> {
         let path = Path::new(&self.config.path);
 
-        // 打开文件
+        // Open the file
         let file = File::open(path)
             .map_err(|e| Error::Connection(format!("无法打开文件 {}: {}", self.config.path, e)))?;
 
         let mut reader = BufReader::new(file);
 
-        // 如果不是从开头开始读取，则移动到文件末尾
+        // If it is not read from the beginning, it moves to the end of the file
         if !self.config.start_from_beginning.unwrap_or(true) {
             reader
                 .seek(SeekFrom::End(0))
@@ -75,20 +74,19 @@ impl Input for FileInput {
         let reader_arc = self.reader.clone();
         let mut reader_mutex = reader_arc.lock().await;
         if !self.connected.load(Ordering::SeqCst) || reader_mutex.is_none() {
-            return Err(Error::Connection("输入未连接".to_string()));
+            return Err(Error::Connection("The input is not connected".to_string()));
         }
 
         if self.eof_reached.load(Ordering::SeqCst) && self.config.close_on_eof.unwrap_or(true) {
             return Err(Error::Done);
         }
 
-        // 使用作用域来限制锁的生命周期
         let bytes_read;
         let mut line = String::new();
         {
             let reader_mutex = reader_mutex.as_mut();
             if reader_mutex.is_none() {
-                return Err(Error::Connection("输入未连接".to_string()));
+                return Err(Error::Connection("The input is not connected".to_string()));
             }
 
             let reader = reader_mutex.unwrap();
@@ -96,20 +94,17 @@ impl Input for FileInput {
         }
 
         if bytes_read == 0 {
-            // 到达文件末尾
             self.eof_reached.store(true, Ordering::SeqCst);
 
-            // 如果配置为关闭，则返回错误
             if self.config.close_on_eof.unwrap_or(true) {
                 return Err(Error::Done);
             }
 
-            // 否则等待一段时间后重试（模拟tail -f行为）
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            return Err(Error::Processing("等待新数据".to_string()));
+            return Err(Error::Processing("Wait for new data".to_string()));
         }
 
-        // 移除尾部的换行符
+        // Remove the trailing line break
         if line.ends_with('\n') {
             line.pop();
             if line.ends_with('\r') {

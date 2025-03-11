@@ -12,7 +12,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SqlConfig {
     select_sql: String,
-    create_source_sql: String,
+    create_table_sql: String,
 }
 
 pub struct SqlInput {
@@ -46,9 +46,9 @@ impl Input for SqlInput {
             .with_allow_ddl(true)
             .with_allow_dml(false)
             .with_allow_statements(false);
-        ctx.sql_with_options(&self.sql_config.create_source_sql, sql_options)
+        ctx.sql_with_options(&self.sql_config.create_table_sql, sql_options)
             .await
-            .map_err(|e| Error::Config(format!("Failed to execute SQL query: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Failed to execute create_table_sql: {}", e)))?;
 
         let sql_options = SQLOptions::new()
             .with_allow_ddl(false)
@@ -57,7 +57,7 @@ impl Input for SqlInput {
         let df = ctx
             .sql_with_options(&self.sql_config.select_sql, sql_options)
             .await
-            .map_err(|e| Error::Reading(format!("Failed to execute SQL query: {}", e)))?;
+            .map_err(|e| Error::Reading(format!("Failed to execute select_sql: {}", e)))?;
 
         let result_batches = df
             .collect()
@@ -68,7 +68,7 @@ impl Input for SqlInput {
             0 => RecordBatch::new_empty(Arc::new(Schema::empty())),
             1 => result_batches[0].clone(),
             _ => arrow::compute::concat_batches(&&result_batches[0].schema(), &result_batches)
-                .map_err(|e| Error::Processing(format!("合并批次失败: {}", e)))?,
+                .map_err(|e| Error::Processing(format!("Merge batches failed: {}", e)))?,
         };
 
         self.read.store(true, Ordering::Release);

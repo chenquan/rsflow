@@ -1,4 +1,4 @@
-//! Rust流处理引擎
+//! Rust stream processing engine
 
 use datafusion::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
@@ -6,81 +6,52 @@ use thiserror::Error;
 
 pub mod config;
 pub mod input;
-pub mod metrics;
 pub mod output;
 pub mod pipeline;
 pub mod processor;
 pub mod stream;
 
-/// 表示流处理引擎中的错误
+/// Error in the stream processing engine
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("IO错误: {0}")]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("序列化错误: {0}")]
+    #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    #[error("配置错误: {0}")]
+    #[error("Configuration error: {0}")]
     Config(String),
 
-    #[error("读取错误: {0}")]
+    #[error("Read error: {0}")]
     Reading(String),
 
-    #[error("处理错误: {0}")]
+    #[error("Handling errors: {0}")]
     Processing(String),
 
-    #[error("连接错误: {0}")]
+    #[error("Connection error: {0}")]
     Connection(String),
 
-    #[error("连接断开")]
+    #[error("Connection lost")]
     Disconnection,
 
-    #[error("超时错误")]
+    #[error("Timeout error")]
     Timeout,
 
-    #[error("未知错误: {0}")]
+    #[error("Unknown error: {0}")]
     Unknown(String),
-    #[error("完成")]
+
+    #[error("Complete")]
     Done,
-}
-
-/// 消息元数据，存储消息的附加信息
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Metadata {
-    fields: std::collections::HashMap<String, String>,
-}
-
-impl Metadata {
-    /// 创建一个新的空元数据
-    pub fn new() -> Self {
-        Self {
-            fields: std::collections::HashMap::new(),
-        }
-    }
-
-    /// 设置元数据字段
-    pub fn set(&mut self, key: &str, value: &str) {
-        self.fields.insert(key.to_string(), value.to_string());
-    }
-
-    /// 获取元数据字段
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.fields.get(key)
-    }
-
-    /// 删除元数据字段
-    pub fn remove(&mut self, key: &str) -> Option<String> {
-        self.fields.remove(key)
-    }
 }
 
 type Bytes = Vec<u8>;
 
-/// 表示流处理引擎中的消息
+/// Represents a message in a stream processing engine.
+
 #[derive(Clone, Debug)]
 pub struct MessageBatch {
-    /// 消息内容
+    /// Message content
     content: Content,
 }
 
@@ -106,12 +77,12 @@ impl MessageBatch {
         }
     }
 
-    /// 从字符串创建消息
+    /// Create a message from a string.
     pub fn from_string(content: &str) -> Self {
         Self::new_binary(vec![content.as_bytes().to_vec()])
     }
 
-    /// 将消息内容解析为字符串
+    /// Parse the message content into a string.
     pub fn as_string(&self) -> Result<Vec<String>, Error> {
         match &self.content {
             Content::Arrow(_) => Err(Error::Processing("无法解析为JSON".to_string())),

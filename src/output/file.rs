@@ -1,6 +1,6 @@
-//! 文件输出组件
+//! File output component
 //!
-//! 将处理后的数据输出到文件
+//! Output the processed data to a file
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-/// 文件输出配置
+/// File output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutputConfig {
     /// 输出文件路径
@@ -24,7 +24,7 @@ pub struct FileOutputConfig {
     pub append: Option<bool>,
 }
 
-/// 文件输出组件
+/// File output component
 pub struct FileOutput {
     config: FileOutputConfig,
     writer: Arc<Mutex<Option<File>>>,
@@ -32,7 +32,7 @@ pub struct FileOutput {
 }
 
 impl FileOutput {
-    /// 创建一个新的文件输出组件
+    /// Create a new file output component
     pub fn new(config: &FileOutputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -47,14 +47,14 @@ impl Output for FileOutput {
     async fn connect(&self) -> Result<(), Error> {
         let path = Path::new(&self.config.path);
 
-        // 确保目录存在
+        // Make sure the directory exists
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 std::fs::create_dir_all(parent).map_err(Error::Io)?
             }
         }
         let append = self.config.append.unwrap_or(true);
-        // 打开文件
+        // Open the file
         let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -73,12 +73,13 @@ impl Output for FileOutput {
         let writer_arc = self.writer.clone();
         let writer_arc_guard = writer_arc.lock().await;
         if !self.connected.load(Ordering::SeqCst) || writer_arc_guard.is_none() {
-            return Err(Error::Connection("输出未连接".to_string()));
+            return Err(Error::Connection("The output is not connected".to_string()));
         }
 
         let content = msg.as_string()?;
         let writer = writer_arc_guard.as_ref();
-        let mut file = writer.ok_or(Error::Connection("输出未连接".to_string()))?;
+        let mut file =
+            writer.ok_or(Error::Connection("The output is not connected".to_string()))?;
 
         for x in content {
             if self.config.append_newline.unwrap_or(true) {

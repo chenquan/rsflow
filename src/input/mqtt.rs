@@ -1,6 +1,6 @@
-//! MQTT输入组件
+//! MQTT input component
 //!
-//! 从MQTT代理接收数据
+//! Receive data from the MQTT broker
 
 use crate::input::Ack;
 use crate::{input::Input, Error, MessageBatch};
@@ -12,30 +12,30 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tracing::error;
 
-/// MQTT输入配置
+/// MQTT input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MqttInputConfig {
-    /// MQTT代理地址
+    /// MQTT broker address
     pub host: String,
-    /// MQTT代理端口
+    /// MQTT proxy port
     pub port: u16,
-    /// 客户端ID
+    /// Client ID
     pub client_id: String,
-    /// 用户名（可选）
+    /// Username (optional)
     pub username: Option<String>,
-    /// 密码（可选）
+    /// Password (optional)
     pub password: Option<String>,
-    /// 订阅的主题列表
+    /// Subscription topic list
     pub topics: Vec<String>,
-    /// 服务质量等级 (0, 1, 2)
+    /// Quality of Service (0, 1, 2)
     pub qos: Option<u8>,
-    /// 是否清除会话
+    /// Whether to clear the session
     pub clean_session: Option<bool>,
-    /// 保持连接的时间间隔（秒）
+    /// Stay-at-a-time interval (seconds)
     pub keep_alive: Option<u64>,
 }
 
-/// MQTT输入组件
+/// MQTT input component
 pub struct MqttInput {
     config: MqttInputConfig,
     client: Arc<Mutex<Option<AsyncClient>>>,
@@ -48,7 +48,7 @@ enum MqttMsg {
     Err(Error),
 }
 impl MqttInput {
-    /// 创建一个新的MQTT输入组件
+    /// Create a new MQTT input component
     pub fn new(config: &MqttInputConfig) -> Result<Self, Error> {
         let (sender, receiver) = flume::bounded::<MqttMsg>(1000);
         let (close_tx, _) = broadcast::channel(1);
@@ -65,48 +65,48 @@ impl MqttInput {
 #[async_trait]
 impl Input for MqttInput {
     async fn connect(&self) -> Result<(), Error> {
-        // 创建MQTT选项
+        // Create MQTT options
         let mut mqtt_options =
             MqttOptions::new(&self.config.client_id, &self.config.host, self.config.port);
         mqtt_options.set_manual_acks(true);
-        // 设置认证信息
+        // Set the authentication information
         if let (Some(username), Some(password)) = (&self.config.username, &self.config.password) {
             mqtt_options.set_credentials(username, password);
         }
 
-        // 设置保持连接时间
+        // Set the keep-alive time
         if let Some(keep_alive) = self.config.keep_alive {
             mqtt_options.set_keep_alive(std::time::Duration::from_secs(keep_alive));
         }
 
-        // 设置清除会话
+        // Set up a purge session
         if let Some(clean_session) = self.config.clean_session {
             mqtt_options.set_clean_session(clean_session);
         }
 
-        // 创建MQTT客户端
+        // Create an MQTT client
         let (client, mut eventloop) = AsyncClient::new(mqtt_options, 10);
-        // 订阅主题
+        // Subscribe to a topic
         let qos_level = match self.config.qos {
             Some(0) => QoS::AtMostOnce,
             Some(1) => QoS::AtLeastOnce,
             Some(2) => QoS::ExactlyOnce,
-            _ => QoS::AtLeastOnce, // 默认为QoS 1
+            _ => QoS::AtLeastOnce, // The default is QoS 1
         };
 
         for topic in &self.config.topics {
-            client
-                .subscribe(topic, qos_level)
-                .await
-                .map_err(|e| Error::Connection(format!("无法订阅MQTT主题 {}: {}", topic, e)))?;
+            client.subscribe(topic, qos_level).await.map_err(|e| {
+                Error::Connection(format!(
+                    "Unable to subscribe to MQTT topics {}: {}",
+                    topic, e
+                ))
+            })?;
         }
 
-        // 保存客户端
         let client_arc = self.client.clone();
         let mut client_guard = client_arc.lock().await;
         *client_guard = Some(client);
 
-        // 启动事件循环处理线程
         let sender_arc = self.sender.clone();
         let mut rx = self.close_tx.subscribe();
         tokio::spawn(async move {
@@ -116,7 +116,7 @@ impl Input for MqttInput {
                         match result {
                             Ok(event) => {
                                 if let Event::Incoming(Packet::Publish(publish)) = event {
-                                    // 将消息添加到队列
+                                    // Add messages to the queue
                                     match sender_arc.send_async(MqttMsg::Publish(publish)).await {
                                         Ok(_) => {}
                                         Err(e) => {
@@ -126,8 +126,8 @@ impl Input for MqttInput {
                                 }
                             }
                             Err(e) => {
-                               // 记录错误并尝试短暂等待后继续
-                                error!("MQTT事件循环错误: {}", e);
+                               // Log the error and try to wait a short time before continuing
+                                error!("The MQTT event loop is incorrect: {}", e);
                                 match sender_arc.send_async(MqttMsg::Err(Error::Disconnection)).await {
                                         Ok(_) => {}
                                         Err(e) => {
@@ -187,14 +187,14 @@ impl Input for MqttInput {
     }
 
     async fn close(&self) -> Result<(), Error> {
-        // 发送关闭信号
+        // Send a shutdown signal
         let _ = self.close_tx.send(());
 
-        // 断开MQTT连接
+        // Disconnect the MQTT connection
         let client_arc = self.client.clone();
         let client_guard = client_arc.lock().await;
         if let Some(client) = &*client_guard {
-            // 尝试断开连接，但不等待结果
+            // Try to disconnect, but don't wait for the result
             let _ = client.disconnect().await;
         }
 

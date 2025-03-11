@@ -1,6 +1,6 @@
-//! 输入组件模块
+//! Input the component module
 //!
-//! 输入组件负责从各种源（如消息队列、文件系统、HTTP端点等）接收数据。
+//! The input component is responsible for receiving data from various sources such as message queues, file systems, HTTP endpoints, and so on.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -20,16 +20,16 @@ mod sql;
 pub trait Ack: Send + Sync {
     async fn ack(&self);
 }
-/// 输入组件的特征接口
+
 #[async_trait]
 pub trait Input: Send + Sync {
-    /// 连接到输入源
+    /// Connect to the input source
     async fn connect(&self) -> Result<(), Error>;
 
-    /// 从输入源读取消息
+    /// Read the message from the input source
     async fn read(&self) -> Result<(MessageBatch, Arc<dyn Ack>), Error>;
 
-    /// 关闭输入源连接
+    /// Close the input source connection
     async fn close(&self) -> Result<(), Error>;
 }
 
@@ -40,7 +40,7 @@ impl Ack for NoopAck {
     async fn ack(&self) {}
 }
 
-/// 输入配置
+/// Input the configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputConfig {
@@ -54,7 +54,7 @@ pub enum InputConfig {
 }
 
 impl InputConfig {
-    /// 根据配置构建输入组件
+    /// Build the input components according to the configuration
     pub fn build(&self) -> Result<Arc<dyn Input>, Error> {
         match self {
             InputConfig::File(config) => Ok(Arc::new(file::FileInput::new(config)?)),

@@ -14,52 +14,49 @@ use arkflow::config::EngineConfig;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 解析命令行参数
-    let matches = Command::new("Rust流处理引擎")
+    let matches = Command::new("arkflow")
         .version("0.1.0")
-        .author("Rust流处理引擎团队")
-        .about("高性能、可靠且易于扩展的数据流处理系统")
+        .author("chenquan")
+        .about("High-performance Rust stream processing engine, providing powerful data stream processing capabilities, supporting multiple input/output sources and processors.")
         .arg(
             Arg::new("config")
                 .short('c')
                 .long("config")
                 .value_name("FILE")
-                .help("指定配置文件路径")
+                .help("Specify the profile path.")
                 .required(true),
         )
         .arg(
             Arg::new("validate")
                 .short('v')
                 .long("validate")
-                .help("仅验证配置文件，不启动引擎")
+                .help("Only the profile is verified, not the engine is started.")
                 .action(clap::ArgAction::SetTrue),
         )
         .get_matches();
 
-    // 获取配置文件路径
+    // Get the profile path
     let config_path = matches.get_one::<String>("config").unwrap();
 
-    // 加载配置
+    // Get the profile path
     let config = match EngineConfig::from_file(config_path) {
-        Ok(config) => {
-            println!("成功加载配置文件: {}", config_path);
-            config
-        }
+        Ok(config) => config,
         Err(e) => {
-            println!("加载配置文件失败: {}", e);
+            error!("Failed to load configuration file: {}", e);
             process::exit(1);
         }
     };
 
-    // 如果只是验证配置，则退出
+    // If you just verify the configuration, exit it
     if matches.get_flag("validate") {
-        info!("配置文件验证通过");
+        info!("The config is validated.");
         return Ok(());
     }
 
-    // 初始化日志系统
+    // Initialize the logging system
     init_logging(&config);
 
-    // 创建并运行所有流
+    // Create and run all flows
     let mut streams = Vec::new();
     let mut handles = Vec::new();
 
@@ -77,11 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // 启动所有流
     for (i, mut stream) in streams.into_iter().enumerate() {
         info!("Starting flow #{}", i + 1);
 
-        // 在新的任务中运行流
         let handle = tokio::spawn(async move {
             match stream.run().await {
                 Ok(_) => info!("Flow #{} completed successfully", i + 1),
@@ -94,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         handles.push(handle);
     }
 
-    // 等待所有流完成
+    // Wait for all flows to complete
     for handle in handles {
         handle.await?;
     }
@@ -103,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// 初始化日志系统
+/// Initialize the logging system
 fn init_logging(config: &EngineConfig) -> () {
     let log_level = if let Some(logging) = &config.logging {
         match logging.level.as_str() {

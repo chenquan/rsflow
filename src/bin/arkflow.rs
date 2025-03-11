@@ -1,7 +1,7 @@
-//! 流处理引擎启动器
+//! 流处理引擎启动器Stream processing engine launcher
 //!
-//! 这个模块提供了一个命令行工具，用于根据配置文件启动流处理引擎。
-//! 支持从YAML、JSON或TOML格式的配置文件加载配置。
+//! This module provides a command-line tool for starting a stream processing engine based on a configuration file.
+//! Support loading configurations from YAML, JSON, or TOML format files.
 
 use std::process;
 

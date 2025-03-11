@@ -56,10 +56,11 @@ impl Stream {
         let output_arc = self.output.clone();
         tokio::spawn(Self::do_input(input, input_sender, worker, output_arc));
 
+        let mut processor_input = input_receiver;
         // 如果有缓冲区，则启动缓冲区处理循环
         if let Some(buffer) = &self.buffer {
             let buffer_clone = buffer.clone();
-            let input_receiver_clone = input_receiver.clone();
+            let input_receiver_clone = processor_input.clone();
             let buffer_sender_clone = buffer_sender.clone();
             let worker = wg.worker();
             tokio::spawn(async move {
@@ -67,31 +68,20 @@ impl Stream {
                 Self::do_buffer(buffer_clone, input_receiver_clone, buffer_sender_clone).await;
             });
 
-            // 使用缓冲区输出作为处理输入
-            for i in 0..self.thread_num {
-                let pipeline = self.pipeline.clone();
-                let buffer_receiver = buffer_receiver.clone();
-                let output_sender = output_sender.clone();
-                let worker = wg.worker();
-                tokio::spawn(async move {
-                    let _worker = worker;
-                    Self::do_processor(pipeline, buffer_receiver, output_sender, i + 1).await;
-                });
-            }
-        } else {
-            // 没有缓冲区，直接处理输入消息
-            for i in 0..self.thread_num {
-                let pipeline = self.pipeline.clone();
-                let input_receiver = input_receiver.clone();
-                let output_sender = output_sender.clone();
-                let worker = wg.worker();
-                tokio::spawn(async move {
-                    let _worker = worker;
-                    Self::do_processor(pipeline, input_receiver, output_sender, i + 1).await;
-                });
-            }
+            // 缓冲区
+            processor_input = buffer_receiver;
         }
 
+        for i in 0..self.thread_num {
+            let pipeline = self.pipeline.clone();
+            let processor_input = processor_input.clone();
+            let output_sender = output_sender.clone();
+            let worker = wg.worker();
+            tokio::spawn(async move {
+                let _worker = worker;
+                Self::do_processor(pipeline, processor_input, output_sender, i + 1).await;
+            });
+        }
         // 关闭发送端以通知所有工作线程
         drop(output_sender);
 
@@ -189,7 +179,7 @@ impl Stream {
                     }
                     };
                 }
-            };
+            }
         }
         info!("input stopped");
     }

@@ -4,6 +4,7 @@ use datafusion::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod buffer;
 pub mod config;
 pub mod input;
 pub mod metrics;

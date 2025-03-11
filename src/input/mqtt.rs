@@ -86,7 +86,7 @@ impl Input for MqttInput {
 
         // Create an MQTT client
         let (client, mut eventloop) = AsyncClient::new(mqtt_options, 10);
-        // 订阅主题
+        // Subscribe to a topic
         let qos_level = match self.config.qos {
             Some(0) => QoS::AtMostOnce,
             Some(1) => QoS::AtLeastOnce,
@@ -95,10 +95,12 @@ impl Input for MqttInput {
         };
 
         for topic in &self.config.topics {
-            client
-                .subscribe(topic, qos_level)
-                .await
-                .map_err(|e| Error::Connection(format!("无法订阅MQTT主题 {}: {}", topic, e)))?;
+            client.subscribe(topic, qos_level).await.map_err(|e| {
+                Error::Connection(format!(
+                    "Unable to subscribe to MQTT topics {}: {}",
+                    topic, e
+                ))
+            })?;
         }
 
         let client_arc = self.client.clone();
@@ -114,7 +116,7 @@ impl Input for MqttInput {
                         match result {
                             Ok(event) => {
                                 if let Event::Incoming(Packet::Publish(publish)) = event {
-                                    // 将消息添加到队列
+                                    // Add messages to the queue
                                     match sender_arc.send_async(MqttMsg::Publish(publish)).await {
                                         Ok(_) => {}
                                         Err(e) => {
@@ -124,7 +126,7 @@ impl Input for MqttInput {
                                 }
                             }
                             Err(e) => {
-                               // 记录错误并尝试短暂等待后继续
+                               // Log the error and try to wait a short time before continuing
                                 error!("The MQTT event loop is incorrect: {}", e);
                                 match sender_arc.send_async(MqttMsg::Err(Error::Disconnection)).await {
                                         Ok(_) => {}

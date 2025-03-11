@@ -1,6 +1,6 @@
-//! 批处理器组件
+//! Batch Processor Components
 //!
-//! 将多个消息批量处理为一个或多个消息
+//! Batch multiple messages into one or more messages
 
 use crate::{processor::Processor, Content, Error, MessageBatch};
 use async_trait::async_trait;
@@ -9,18 +9,18 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-/// 批处理器配置
+/// Batch processor configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchProcessorConfig {
-    /// 批处理大小
+    /// Batch size
     pub count: usize,
-    /// 批处理超时（毫秒）
+    /// Batch timeout (ms)
     pub timeout_ms: u64,
-    /// 批处理数据类型
+    /// Batch data type
     pub data_type: String,
 }
 
-/// 批处理器组件
+/// Batch Processor Components
 pub struct BatchProcessor {
     config: BatchProcessorConfig,
     batch: Arc<RwLock<Vec<MessageBatch>>>,
@@ -28,7 +28,7 @@ pub struct BatchProcessor {
 }
 
 impl BatchProcessor {
-    /// 创建一个新的批处理器组件
+    /// Create a new batch processor component
     pub fn new(config: &BatchProcessorConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -37,7 +37,7 @@ impl BatchProcessor {
         })
     }
 
-    /// 检查是否应该刷新批处理
+    /// Check if the batch should be refreshed
     async fn should_flush(&self) -> bool {
         // 如果批处理已满，则刷新
         let batch = self.batch.read().await;
@@ -55,7 +55,7 @@ impl BatchProcessor {
         false
     }
 
-    /// 刷新批处理
+    /// Refresh the batch
     async fn flush(&self) -> Result<Vec<MessageBatch>, Error> {
         let mut batch = self.batch.write().await;
 
@@ -63,7 +63,7 @@ impl BatchProcessor {
             return Ok(vec![]);
         }
 
-        // 创建一个新的批处理消息
+        // Create a new batch message
         let new_batch = match self.config.data_type.as_str() {
             "arrow" => {
                 let mut combined_content = Vec::new();
@@ -75,7 +75,7 @@ impl BatchProcessor {
                 }
                 let schema = combined_content[0].schema();
                 let batch = arrow::compute::concat_batches(&schema, &combined_content)
-                    .map_err(|e| Error::Processing(format!("合并批次失败: {}", e)))?;
+                    .map_err(|e| Error::Processing(format!("Merge batches failed: {}", e)))?;
                 Ok(vec![MessageBatch::new_arrow(batch)])
             }
             "binary" => {
@@ -119,15 +119,15 @@ impl Processor for BatchProcessor {
         {
             let mut batch = self.batch.write().await;
 
-            // 添加消息到批处理
+            // Add messages to a batch
             batch.push(msg);
         }
 
-        // 检查是否应该刷新批处理
+        // Check if the batch should be refreshed
         if self.should_flush().await {
             self.flush().await
         } else {
-            // 如果不刷新，则返回空结果
+            // If it is not refreshed, an empty result is returned
             Ok(vec![])
         }
     }

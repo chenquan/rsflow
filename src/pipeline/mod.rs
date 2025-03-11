@@ -1,24 +1,23 @@
-//! 管道组件模块
+//! 管道组件模块Pipe Component Module
 //!
-//! 管道是处理器的有序集合，定义了数据如何从输入流向输出，经过一系列处理步骤。
+//! A pipeline is an ordered collection of processors that defines how data flows from input to output, through a series of processing steps.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{processor::Processor, Error, MessageBatch};
 
-/// 管道结构体，包含一系列处理器
 pub struct Pipeline {
     processors: Vec<Arc<dyn Processor>>,
 }
 
 impl Pipeline {
-    /// 创建一个新的管道
+    /// Create a new pipeline
     pub fn new(processors: Vec<Arc<dyn Processor>>) -> Self {
         Self { processors }
     }
 
-    /// 处理消息
+    /// Process messages
     pub async fn process(&self, msg: MessageBatch) -> Result<Vec<MessageBatch>, Error> {
         let mut msgs = vec![msg];
         for processor in &self.processors {
@@ -34,7 +33,7 @@ impl Pipeline {
         Ok(msgs)
     }
 
-    /// 关闭管道中的所有处理器
+    /// Shut down all processors in the pipeline
     pub async fn close(&self) -> Result<(), Error> {
         for processor in &self.processors {
             processor.close().await?
@@ -43,7 +42,7 @@ impl Pipeline {
     }
 }
 
-/// 管道配置
+/// Pipeline configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {
     pub thread_num: i32,
@@ -51,7 +50,7 @@ pub struct PipelineConfig {
 }
 
 impl PipelineConfig {
-    /// 根据配置构建管道
+    /// Build pipelines based on your configuration
     pub fn build(&self) -> Result<(Pipeline, i32), Error> {
         let mut processors = Vec::new();
         for processor_config in &self.processors {

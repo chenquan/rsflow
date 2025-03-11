@@ -1,6 +1,6 @@
-//! Protobuf处理器组件
+//! Protobuf Processor Components
 //!
-//! 用于在Protobuf数据和Arrow格式之间进行转换的处理器
+//! The processor used to convert between Protobuf data and the Arrow format
 
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -23,35 +23,41 @@ use crate::processor::Processor;
 use crate::{Content, Error, MessageBatch};
 use protobuf::Message as ProtobufMessage;
 
-/// Protobuf格式转换处理器配置
+/// Protobuf format conversion processor configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtobufProcessorConfig {
-    /// Protobuf消息类型描述符文件路径
+    /// Protobuf message type descriptor file path
     pub proto_inputs: Vec<String>,
     pub proto_includes: Option<Vec<String>>,
-    /// Protobuf消息类型名称
+    /// Protobuf message type name
     pub message_type: String,
 }
 
-/// Protobuf格式转换处理器
+/// Protobuf Format Conversion Processor
 pub struct ProtobufProcessor {
     _config: ProtobufProcessorConfig,
     descriptor: MessageDescriptor,
 }
 
 impl ProtobufProcessor {
-    /// 创建一个新的Protobuf格式转换处理器
+    /// Create a new Protobuf format conversion processor
     pub fn new(config: &ProtobufProcessorConfig) -> Result<Self, Error> {
-        // 检查文件扩展名，判断是proto文件还是二进制描述符文件
+        // Check the file extension to see if it's a proto file or a binary descriptor file
         let file_descriptor_set = Self::parse_proto_file(&config)?;
 
-        let descriptor_pool =
-            prost_reflect::DescriptorPool::from_file_descriptor_set(file_descriptor_set)
-                .map_err(|e| Error::Config(format!("无法创建Protobuf描述符池: {}", e)))?;
+        let descriptor_pool = prost_reflect::DescriptorPool::from_file_descriptor_set(
+            file_descriptor_set,
+        )
+        .map_err(|e| Error::Config(format!("Unable to create Protobuf descriptor pool: {}", e)))?;
 
         let message_descriptor = descriptor_pool
             .get_message_by_name(&config.message_type)
-            .ok_or_else(|| Error::Config(format!("找不到消息类型: {}", config.message_type)))?;
+            .ok_or_else(|| {
+                Error::Config(format!(
+                    "The message type could not be found: {}",
+                    config.message_type
+                ))
+            })?;
 
         Ok(Self {
             _config: config.clone(),
@@ -59,12 +65,12 @@ impl ProtobufProcessor {
         })
     }
 
-    /// 从.proto文件解析并生成FileDescriptorSet
+    /// Parse and generate a FileDescriptorSet from the .proto file
     fn parse_proto_file(c: &&ProtobufProcessorConfig) -> Result<FileDescriptorSet, Error> {
         let mut proto_inputs: Vec<String> = vec![];
         for x in &c.proto_inputs {
             let files_in_dir_result = list_files_in_dir(x)
-                .map_err(|e| Error::Config(format!("列出proto文件失败: {}", e)))?;
+                .map_err(|e| Error::Config(format!("Failed to list proto files: {}", e)))?;
             proto_inputs.extend(
                 files_in_dir_result
                     .iter()
@@ -75,32 +81,35 @@ impl ProtobufProcessor {
         }
         let proto_includes = c.proto_includes.clone().unwrap_or(c.proto_inputs.clone());
 
-        // 使用protobuf_parse库解析proto文件
+        // Parse the proto file using the protobuf_parse library
         let file_descriptor_protos = protobuf_parse::Parser::new()
             .pure()
             .inputs(proto_inputs)
             .includes(proto_includes)
             .parse_and_typecheck()
-            .map_err(|e| Error::Config(format!("解析proto文件失败: {}", e)))?
+            .map_err(|e| Error::Config(format!("Failed to parse the proto file: {}", e)))?
             .file_descriptors;
 
         if file_descriptor_protos.is_empty() {
-            return Err(Error::Config("解析proto文件未产生任何描述符".to_string()));
+            return Err(Error::Config(
+                "Parsing the proto file does not yield any descriptors".to_string(),
+            ));
         }
 
-        // 将FileDescriptorProto转换为FileDescriptorSet
-        let mut file_descriptor_set =
-            prost_reflect::prost_types::FileDescriptorSet { file: Vec::new() };
+        // Convert FileDescriptorProto to FileDescriptorSet
+        let mut file_descriptor_set = FileDescriptorSet { file: Vec::new() };
 
         for proto in file_descriptor_protos {
-            // 将protobuf库的FileDescriptorProto转换为prost_types的FileDescriptorProto
-            let proto_bytes = proto
-                .write_to_bytes()
-                .map_err(|e| Error::Config(format!("序列化FileDescriptorProto失败: {}", e)))?;
+            // Convert the protobuf library's FileDescriptorProto to a prost_types FileDescriptorProto
+            let proto_bytes = proto.write_to_bytes().map_err(|e| {
+                Error::Config(format!("Failed to serialize FileDescriptorProto: {}", e))
+            })?;
 
             let prost_proto =
                 prost_reflect::prost_types::FileDescriptorProto::decode(proto_bytes.as_slice())
-                    .map_err(|e| Error::Config(format!("转换FileDescriptorProto失败: {}", e)))?;
+                    .map_err(|e| {
+                        Error::Config(format!("Failed to convert FileDescriptorProto: {}", e))
+                    })?;
 
             file_descriptor_set.file.push(prost_proto);
         }
@@ -108,17 +117,17 @@ impl ProtobufProcessor {
         Ok(file_descriptor_set)
     }
 
-    /// 将Protobuf数据转换为Arrow格式
+    /// Convert Protobuf data to Arrow format
     fn protobuf_to_arrow(&self, data: &[u8]) -> Result<RecordBatch, Error> {
         // 解析Protobuf消息
         let proto_msg = DynamicMessage::decode(self.descriptor.clone(), data)
-            .map_err(|e| Error::Processing(format!("Protobuf消息解析失败: {}", e)))?;
+            .map_err(|e| Error::Processing(format!("Protobuf message parsing failed: {}", e)))?;
 
-        // 构建Arrow Schema
+        // Building an Arrow Schema
         let mut fields = Vec::new();
         let mut columns: Vec<ArrayRef> = Vec::new();
 
-        // 遍历Protobuf消息的所有字段
+        // Iterate over all fields of a Protobuf message
         for field in self.descriptor.fields() {
             let field_name = field.name();
 
@@ -170,7 +179,7 @@ impl ProtobufProcessor {
                 }
                 _ => {
                     return Err(Error::Processing(format!(
-                        "不支持的字段类型: {}",
+                        "Unsupported field type: {}",
                         field_name
                     )));
                 } // Value::Message(_) => {}
@@ -179,32 +188,30 @@ impl ProtobufProcessor {
             }
         }
 
-        // 创建RecordBatch
+        // Create RecordBatch
         let schema = Arc::new(Schema::new(fields));
         RecordBatch::try_new(schema, columns)
-            .map_err(|e| Error::Processing(format!("创建Arrow记录批次失败: {}", e)))
+            .map_err(|e| Error::Processing(format!("Creating an Arrow record batch failed: {}", e)))
     }
 
-    /// 将Arrow格式转换为Protobuf
+    /// Convert Arrow format to Protobuf.
     fn arrow_to_protobuf(&self, batch: &RecordBatch) -> Result<Vec<u8>, Error> {
-        // 创建一个新的动态消息
+        // Create a new dynamic message
         let mut proto_msg = DynamicMessage::new(self.descriptor.clone());
 
-        // 获取Arrow的schema
+        // Get the Arrow schema.
         let schema = batch.schema();
 
-        // 确保只有一行数据
+        // Ensure there is only one line of data.
         if batch.num_rows() != 1 {
             return Err(Error::Processing(
-                "只支持单行Arrow数据转换为Protobuf".to_string(),
+                "Only supports single-line Arrow data conversion to Protobuf.".to_string(),
             ));
         }
 
-        // 遍历所有列，将数据填充到Protobuf消息中
         for (i, field) in schema.fields().iter().enumerate() {
             let field_name = field.name();
 
-            // 检查Protobuf消息是否有对应的字段
             if let Some(proto_field) = self.descriptor.get_field_by_name(field_name) {
                 let column = batch.column(i);
 
@@ -273,10 +280,9 @@ impl ProtobufProcessor {
                             }
                         }
                     }
-                    // 对于其他类型，可以根据需要添加更多处理
                     _ => {
                         return Err(Error::Processing(format!(
-                            "不支持的Protobuf类型: {:?}",
+                            "Unsupported Protobuf type: {:?}",
                             proto_field.kind()
                         )))
                     }
@@ -284,11 +290,10 @@ impl ProtobufProcessor {
             }
         }
 
-        // 编码Protobuf消息
         let mut buf = Vec::new();
         proto_msg
             .encode(&mut buf)
-            .map_err(|e| Error::Processing(format!("Protobuf编码失败: {}", e)))?;
+            .map_err(|e| Error::Processing(format!("Protobuf encoding failed: {}", e)))?;
 
         Ok(buf)
     }
@@ -302,10 +307,8 @@ impl Processor for ProtobufProcessor {
         }
         match msg.content {
             Content::Arrow(v) => {
-                // 将Arrow格式转换为Protobuf
+                // Convert Arrow format to Protobuf.
                 let proto_data = self.arrow_to_protobuf(&v)?;
-
-                // 创建新消息，保留原始元数据
                 let new_msg = MessageBatch::new_binary(vec![proto_data]);
 
                 Ok(vec![new_msg])
@@ -316,21 +319,20 @@ impl Processor for ProtobufProcessor {
                 }
                 let mut batches = Vec::with_capacity(v.len());
                 for x in v {
-                    // 将Protobuf消息转换为Arrow格式
+                    // Convert Protobuf messages to Arrow format.
                     let batch = self.protobuf_to_arrow(&x)?;
                     batches.push(batch)
                 }
 
                 let schema = batches[0].schema();
                 let batch = arrow::compute::concat_batches(&schema, &batches)
-                    .map_err(|e| Error::Processing(format!("合并批次失败: {}", e)))?;
+                    .map_err(|e| Error::Processing(format!("Batch merge failed: {}", e)))?;
                 Ok(vec![MessageBatch::new_arrow(batch)])
             }
         }
     }
 
     async fn close(&self) -> Result<(), Error> {
-        // 无需特殊清理
         Ok(())
     }
 }

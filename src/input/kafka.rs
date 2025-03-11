@@ -78,9 +78,9 @@ impl Input for KafkaInput {
             .iter()
             .map(|topic| topic.as_str())
             .collect();
-        consumer
-            .subscribe(&x)
-            .map_err(|e| Error::Connection(format!("You cannot subscribe to a Kafka topic: {}", e)))?;
+        consumer.subscribe(&x).map_err(|e| {
+            Error::Connection(format!("You cannot subscribe to a Kafka topic: {}", e))
+        })?;
 
         // 更新消费者和连接状态
         let consumer_arc = self.consumer.clone();
@@ -101,9 +101,9 @@ impl Input for KafkaInput {
         match consumer.recv().await {
             Ok(kafka_message) => {
                 // 从Kafka消息创建内部消息
-                let payload = kafka_message
-                    .payload()
-                    .ok_or_else(|| Error::Processing("The Kafka message has no content".to_string()))?;
+                let payload = kafka_message.payload().ok_or_else(|| {
+                    Error::Processing("The Kafka message has no content".to_string())
+                })?;
 
                 let mut binary_data = Vec::new();
                 binary_data.push(payload.to_vec());
@@ -123,12 +123,14 @@ impl Input for KafkaInput {
 
                 Ok((msg_batch, Arc::new(ack)))
             }
-            Err(e) => Err(Error::Connection(format!("The Kafka message was received incorrectly: {}", e))),
+            Err(e) => Err(Error::Connection(format!(
+                "The Kafka message was received incorrectly: {}",
+                e
+            ))),
         }
     }
 
     async fn close(&self) -> Result<(), Error> {
-        // 安全地清理消费者资源
         let mut consumer_guard = self.consumer.write().await;
         if let Some(consumer) = consumer_guard.take() {
             if let Err(e) = consumer.unassign() {
@@ -139,7 +141,7 @@ impl Input for KafkaInput {
     }
 }
 
-/// Kafka消息确认
+/// Kafka message confirmation
 pub struct KafkaAck {
     consumer: Arc<RwLock<Option<StreamConsumer>>>,
     topic: String,
@@ -150,7 +152,7 @@ pub struct KafkaAck {
 #[async_trait]
 impl Ack for KafkaAck {
     async fn ack(&self) {
-        // 提交偏移量
+        // Commit offsets
         let consumer_mutex_guard = self.consumer.read().await;
         if let Some(v) = &*consumer_mutex_guard {
             if let Err(e) = v.store_offset(&self.topic, self.partition, self.offset) {

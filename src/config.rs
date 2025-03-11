@@ -1,132 +1,108 @@
-//! 配置模块
+//! Configuration module
 //!
-//! 提供流处理引擎的配置管理功能
+//! Provide configuration management for the stream processing engine.
 
 use serde::{Deserialize, Serialize};
 use toml;
 
 use crate::{stream::StreamConfig, Error};
 
-/// 配置文件格式
+/// Configuration file format
 #[derive(Debug, Clone, Copy)]
 pub enum ConfigFormat {
-    /// YAML格式
     YAML,
-    /// JSON格式
     JSON,
-    /// TOML格式
     TOML,
 }
 
-/// 日志配置
+/// Log configuration
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
-    /// 日志级别
+    /// Log level
     pub level: String,
-    /// 是否输出到文件
+    /// Output to file?
     pub file_output: Option<bool>,
-    /// 日志文件路径
+    /// Log file path
     pub file_path: Option<String>,
 }
 
-/// 引擎配置
+/// Engine configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineConfig {
-    /// 流配置
+    /// Flow configuration
     pub streams: Vec<StreamConfig>,
-    /// 全局HTTP服务器配置（可选）
+    /// Global HTTP server configuration (optional)
     pub http: Option<HttpServerConfig>,
-    /// 指标收集配置（可选）
+    /// Metric collection configuration (optional)
     pub metrics: Option<MetricsConfig>,
-    /// 日志配置（可选）
+    /// Logging configuration (optional)
     pub logging: Option<LoggingConfig>,
 }
 
-/// HTTP服务器配置
+/// HTTP Server Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpServerConfig {
-    /// 监听地址
+    /// Listening address
     pub address: String,
-    /// 是否启用CORS
+    /// Enable CORS
     pub cors_enabled: bool,
-    /// 是否启用健康检查端点
+    /// Enable health check endpoint
     pub health_enabled: bool,
 }
 
 /// 指标收集配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsConfig {
-    /// 是否启用指标收集
+    /// Enable metric collection
     pub enabled: bool,
-    /// 指标类型（prometheus, statsd等）
+    /// Metric types (Prometheus, StatsD, etc.)
     pub type_name: String,
-    /// 指标前缀
+    /// Metric prefixes
     pub prefix: Option<String>,
-    /// 指标标签（键值对）
+    /// Metric labels (key-value pairs)
     pub tags: Option<std::collections::HashMap<String, String>>,
 }
 
 impl EngineConfig {
-    /// 从文件加载配置
+    /// Load configuration from file
     pub fn from_file(path: &str) -> Result<Self, Error> {
         let content = std::fs::read_to_string(path)
-            .map_err(|e| Error::Config(format!("无法读取配置文件: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Unable to read configuration file: {}", e)))?;
 
-        // 根据文件后缀名判断格式
+        // Determine the format based on the file extension.
         if let Some(format) = get_format_from_path(path) {
             match format {
                 ConfigFormat::YAML => {
                     return serde_yaml::from_str(&content)
-                        .map_err(|e| Error::Config(format!("YAML解析错误: {}", e)));
+                        .map_err(|e| Error::Config(format!("YAML parsing error: {}", e)));
                 }
                 ConfigFormat::JSON => {
                     return serde_json::from_str(&content)
-                        .map_err(|e| Error::Config(format!("JSON解析错误: {}", e)));
+                        .map_err(|e| Error::Config(format!("JSON parsing error: {}", e)));
                 }
                 ConfigFormat::TOML => {
                     return toml::from_str(&content)
-                        .map_err(|e| Error::Config(format!("TOML解析错误: {}", e)));
+                        .map_err(|e| Error::Config(format!("TOML parsing error: {}", e)));
                 }
             }
-        }
+        };
 
-        // 如果无法从文件名判断格式，则尝试所有格式
-        Self::from_string(&content)
+        Err(Error::Config("The configuration file format cannot be determined. Please use YAML, JSON, or TOML format.".to_string()))
     }
 
-    /// 从字符串加载配置
-    pub fn from_string(content: &str) -> Result<Self, Error> {
-        // 尝试解析为YAML
-        if let Ok(config) = serde_yaml::from_str(content) {
-            return Ok(config);
-        }
-
-        // 尝试解析为TOML
-        if let Ok(config) = toml::from_str(content) {
-            return Ok(config);
-        }
-
-        // 尝试解析为JSON
-        if let Ok(config) = serde_json::from_str(content) {
-            return Ok(config);
-        }
-
-        // 所有格式都解析失败
-        Err(Error::Config(format!(
-            "无法解析配置文件，支持的格式为：YAML、TOML、JSON"
-        )))
-    }
-
-    /// 保存配置到文件
+    /// Save configuration to file
     pub fn save_to_file(&self, path: &str) -> Result<(), Error> {
         let content = toml::to_string_pretty(self)
-            .map_err(|e| Error::Config(format!("无法序列化配置: {}", e)))?;
+            .map_err(|e| Error::Config(format!("Configuration cannot be serialized.: {}", e)))?;
 
-        std::fs::write(path, content).map_err(|e| Error::Config(format!("无法写入配置文件: {}", e)))
+        std::fs::write(path, content).map_err(|e| {
+            Error::Config(format!("Unable to write to the configuration file.: {}", e))
+        })
     }
 }
 
-/// 创建默认配置
+/// Create default configuration
 pub fn default_config() -> EngineConfig {
     EngineConfig {
         streams: vec![],
@@ -149,7 +125,7 @@ pub fn default_config() -> EngineConfig {
     }
 }
 
-/// 从文件路径获取配置格式
+/// Get configuration format from file path.
 fn get_format_from_path(path: &str) -> Option<ConfigFormat> {
     let path = path.to_lowercase();
     if path.ends_with(".yaml") || path.ends_with(".yml") {

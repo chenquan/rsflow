@@ -1,6 +1,6 @@
-//! 处理器组件模块
+//! Processor component module
 //!
-//! 处理器组件负责对数据进行转换、过滤、丰富等操作。
+//! The processor component is responsible for transforming, filtering, enriching, and so on.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -14,17 +14,17 @@ pub mod protobuf;
 pub mod sql;
 mod udf;
 
-/// 处理器组件的特征接口
+/// Characteristic interface of the processor component
 #[async_trait]
 pub trait Processor: Send + Sync {
-    /// 处理消息
+    /// Process messages
     async fn process(&self, batch: MessageBatch) -> Result<Vec<MessageBatch>, Error>;
 
-    /// 关闭处理器
+    /// Turn off the processor
     async fn close(&self) -> Result<(), Error>;
 }
 
-/// 处理器配置
+/// Processor configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProcessorConfig {
@@ -36,7 +36,7 @@ pub enum ProcessorConfig {
 }
 
 impl ProcessorConfig {
-    /// 根据配置构建处理器组件
+    /// Build the processor components according to the configuration
     pub fn build(&self) -> Result<Arc<dyn Processor>, Error> {
         match self {
             ProcessorConfig::Batch(config) => Ok(Arc::new(batch::BatchProcessor::new(config)?)),

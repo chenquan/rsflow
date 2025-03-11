@@ -1,6 +1,6 @@
-//! Kafka输出组件
+//! Kafka output component
 //!
-//! 将处理后的数据发送到Kafka主题
+//! Send the processed data to the Kafka topic
 
 use serde::{Deserialize, Serialize};
 
@@ -26,31 +26,31 @@ impl std::fmt::Display for CompressionType {
     }
 }
 
-/// Kafka输出配置
+/// Kafka output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KafkaOutputConfig {
-    /// Kafka服务器地址列表
+    /// List of Kafka server addresses
     pub brokers: Vec<String>,
-    /// 目标主题
+    /// Target topic
     pub topic: String,
-    /// 分区键（可选）
+    /// Partition key (optional)
     pub key: Option<String>,
-    /// 客户端ID
+    /// Client ID
     pub client_id: Option<String>,
-    /// 压缩类型
+    /// Compression type
     pub compression: Option<CompressionType>,
-    /// 确认级别（0=无确认, 1=领导者确认, all=所有副本确认）
+    /// Acknowledgment level (0=no acknowledgment, 1=leader acknowledgment, all=all replica acknowledgments)
     pub acks: Option<String>,
 }
 
-/// Kafka输出组件
+/// Kafka output component
 pub struct KafkaOutput {
     config: KafkaOutputConfig,
     producer: Arc<RwLock<Option<FutureProducer>>>,
 }
 
 impl KafkaOutput {
-    /// 创建一个新的Kafka输出组件
+    /// Create a new Kafka output component
     pub fn new(config: &KafkaOutputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -71,30 +71,30 @@ impl Output for KafkaOutput {
     async fn connect(&self) -> Result<(), Error> {
         let mut client_config = ClientConfig::new();
 
-        // 设置Kafka服务器地址
+        // Configure the Kafka server address
         client_config.set("bootstrap.servers", &self.config.brokers.join(","));
 
-        // 设置客户端ID
+        // Set the client ID
         if let Some(client_id) = &self.config.client_id {
             client_config.set("client.id", client_id);
         }
 
-        // 设置压缩类型
+        // Set the compression type
         if let Some(compression) = &self.config.compression {
             client_config.set("compression.type", compression.to_string().to_lowercase());
         }
 
-        // 设置确认级别
+        // Set the confirmation level
         if let Some(acks) = &self.config.acks {
             client_config.set("acks", acks);
         }
 
-        // 创建生产者
+        // Create a producer
         let producer: FutureProducer = client_config
             .create()
-            .map_err(|e| Error::Connection(format!("无法创建Kafka生产者: {}", e)))?;
+            .map_err(|e| Error::Connection(format!("A Kafka producer cannot be created: {}", e)))?;
 
-        // 保存生产者实例
+        // Save the producer instance
         let producer_arc = self.producer.clone();
         let mut producer_guard = producer_arc.write().await;
         *producer_guard = Some(producer);
@@ -105,9 +105,9 @@ impl Output for KafkaOutput {
     async fn write(&self, msg: &MessageBatch) -> Result<(), Error> {
         let producer_arc = self.producer.clone();
         let producer_guard = producer_arc.read().await;
-        let producer = producer_guard
-            .as_ref()
-            .ok_or_else(|| Error::Connection("Kafka生产者未初始化".to_string()))?;
+        let producer = producer_guard.as_ref().ok_or_else(|| {
+            Error::Connection("The Kafka producer is not initialized".to_string())
+        })?;
 
         let payloads = msg.as_string()?;
         if payloads.is_empty() {
@@ -115,7 +115,11 @@ impl Output for KafkaOutput {
         }
 
         match &msg.content {
-            Content::Arrow(_) => return Err(Error::Processing("不支持arrow格式".to_string())),
+            Content::Arrow(_) => {
+                return Err(Error::Processing(
+                    "The arrow format is not supported".to_string(),
+                ))
+            }
             Content::Binary(v) => {
                 for x in v {
                     // 创建记录
@@ -126,11 +130,13 @@ impl Output for KafkaOutput {
                         record = record.key(key);
                     }
 
-                    // 获取生产者并发送消息
+                    // Get the producer and send the message
                     producer
                         .send(record, Duration::from_secs(5))
                         .await
-                        .map_err(|(e, _)| Error::Processing(format!("发送Kafka消息失败: {}", e)))?;
+                        .map_err(|(e, _)| {
+                            Error::Processing(format!("Failed to send a Kafka message: {}", e))
+                        })?;
                 }
             }
         }
@@ -138,15 +144,18 @@ impl Output for KafkaOutput {
     }
 
     async fn close(&self) -> Result<(), Error> {
-        // 获取生产者并关闭
+        // Get the producer and close
         let producer_arc = self.producer.clone();
         let mut producer_guard = producer_arc.write().await;
 
         if let Some(producer) = producer_guard.take() {
-            // 等待所有消息发送完成
-            producer
-                .flush(Duration::from_secs(30))
-                .map_err(|e| Error::Connection(format!("关闭Kafka生产者时刷新消息失败: {}", e)))?;
+            // Wait for all messages to be sent
+            producer.flush(Duration::from_secs(30)).map_err(|e| {
+                Error::Connection(format!(
+                    "Failed to refresh the message when the Kafka producer is disabled: {}",
+                    e
+                ))
+            })?;
         }
         Ok(())
     }

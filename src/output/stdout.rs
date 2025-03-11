@@ -1,6 +1,6 @@
-//! 标准输出组件
+//! Standard output components
 //!
-//! 将处理后的数据输出到标准输出
+//! Outputs the processed data to standard output
 
 use std::io::{self, Write};
 use std::string::String;
@@ -12,21 +12,21 @@ use datafusion::arrow::array::RecordBatch;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-/// 标准输出配置
+/// Standard output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StdoutOutputConfig {
-    /// 是否在每条消息后添加换行符
+    /// Whether to add a line break after each message
     pub append_newline: Option<bool>,
 }
 
-/// 标准输出组件
+/// Standard output components
 pub struct StdoutOutput {
     config: StdoutOutputConfig,
     writer: Mutex<io::Stdout>,
 }
 
 impl StdoutOutput {
-    /// 创建一个新的标准输出组件
+    /// Create a new standard output component
     pub fn new(config: &StdoutOutputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -61,10 +61,10 @@ impl StdoutOutput {
         let mut writer = arrow::json::ArrayWriter::new(&mut buf);
         writer
             .write(message_batch)
-            .map_err(|e| Error::Processing(format!("Arrow JSON序列化错误: {}", e)))?;
+            .map_err(|e| Error::Processing(format!("Arrow JSON serialization error: {}", e)))?;
         writer
             .finish()
-            .map_err(|e| Error::Processing(format!("Arrow JSON序列化完成错误: {}", e)))?;
+            .map_err(|e| Error::Processing(format!("Arrow JSON serialization error: {}", e)))?;
         let s = String::from_utf8_lossy(&buf);
 
         if self.config.append_newline.unwrap_or(true) {

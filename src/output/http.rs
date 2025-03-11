@@ -1,6 +1,6 @@
-//! HTTP输出组件
+//! HTTP output component
 //!
-//! 将处理后的数据发送到HTTP端点
+//! Send the processed data to the HTTP endpoint
 
 use crate::{output::Output, Error, MessageBatch};
 use async_trait::async_trait;
@@ -10,22 +10,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// HTTP输出配置
+/// HTTP output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpOutputConfig {
-    /// 目标URL
+    /// Destination URL
     pub url: String,
-    /// HTTP方法
+    /// HTTP method
     pub method: String,
-    /// 超时时间（毫秒）
+    /// Timeout Period (ms)
     pub timeout_ms: u64,
-    /// 重试次数
+    /// Number of retries
     pub retry_count: u32,
-    /// 请求头
+    /// Request header
     pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
-/// HTTP输出组件
+/// HTTP output component
 pub struct HttpOutput {
     config: HttpOutputConfig,
     client: Arc<Mutex<Option<Client>>>,
@@ -33,7 +33,7 @@ pub struct HttpOutput {
 }
 
 impl HttpOutput {
-    /// 创建一个新的HTTP输出组件
+    /// Create a new HTTP output component
     pub fn new(config: &HttpOutputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -46,14 +46,14 @@ impl HttpOutput {
 #[async_trait]
 impl Output for HttpOutput {
     async fn connect(&self) -> Result<(), Error> {
-        // 创建HTTP客户端
+        // Create an HTTP client
         let client_builder =
             Client::builder().timeout(std::time::Duration::from_millis(self.config.timeout_ms));
         let client_arc = self.client.clone();
         client_arc.lock().await.replace(
-            client_builder
-                .build()
-                .map_err(|e| Error::Connection(format!("无法创建HTTP客户端: {}", e)))?,
+            client_builder.build().map_err(|e| {
+                Error::Connection(format!("Unable to create an HTTP client: {}", e))
+            })?,
         );
 
         self.connected.store(true, Ordering::SeqCst);
@@ -64,7 +64,7 @@ impl Output for HttpOutput {
         let client_arc = self.client.clone();
         let client_arc_guard = client_arc.lock().await;
         if !self.connected.load(Ordering::SeqCst) || client_arc_guard.is_none() {
-            return Err(Error::Connection("输出未连接".to_string()));
+            return Err(Error::Connection("The output is not connected".to_string()));
         }
 
         let client = client_arc_guard.as_ref().unwrap();
@@ -77,7 +77,7 @@ impl Output for HttpOutput {
             body = content[0].clone();
         } else {
             body = serde_json::to_string(&content)
-                .map_err(|_| Error::Processing("无法序列化消息".to_string()))?;
+                .map_err(|_| Error::Processing("Unable to serialize message".to_string()))?;
         }
 
         // 构建请求
@@ -89,7 +89,7 @@ impl Output for HttpOutput {
             "PATCH" => client.patch(&self.config.url).body(body),
             _ => {
                 return Err(Error::Config(format!(
-                    "不支持的HTTP方法: {}",
+                    "HTTP methods that are not supported: {}",
                     self.config.method
                 )))
             }
@@ -112,7 +112,7 @@ impl Output for HttpOutput {
             request_builder = request_builder.header(header::CONTENT_TYPE, "application/json");
         }
 
-        // 发送请求
+        // Send a request
         let mut retry_count = 0;
         let mut last_error = None;
 
@@ -126,21 +126,21 @@ impl Output for HttpOutput {
                         let body = response
                             .text()
                             .await
-                            .unwrap_or_else(|_| "<无法读取响应体>".to_string());
+                            .unwrap_or_else(|_| "<Unable to read response body>".to_string());
                         last_error = Some(Error::Processing(format!(
-                            "HTTP请求失败: 状态码 {}, 响应: {}",
+                            "HTTP Request Failed: Status code {}, response: {}",
                             status, body
                         )));
                     }
                 }
                 Err(e) => {
-                    last_error = Some(Error::Connection(format!("HTTP请求错误: {}", e)));
+                    last_error = Some(Error::Connection(format!("HTTP request error: {}", e)));
                 }
             }
 
             retry_count += 1;
             if retry_count <= self.config.retry_count {
-                // 指数退避重试
+                // Index backoff retry
                 tokio::time::sleep(std::time::Duration::from_millis(
                     100 * 2u64.pow(retry_count - 1),
                 ))
@@ -148,7 +148,7 @@ impl Output for HttpOutput {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| Error::Unknown("未知HTTP错误".to_string())))
+        Err(last_error.unwrap_or_else(|| Error::Unknown("Unknown HTTP error".to_string())))
     }
 
     async fn close(&self) -> Result<(), Error> {

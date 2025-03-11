@@ -17,11 +17,11 @@ use crate::{input::Input, Error, MessageBatch};
 /// HTTP input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HttpInputConfig {
-    /// 监听地址
+    /// Listening address
     pub address: String,
-    /// 路径
+    /// Path
     pub path: String,
-    /// 是否启用CORS
+    /// Whether CORS is enabled
     pub cors_enabled: Option<bool>,
 }
 
@@ -32,7 +32,6 @@ pub struct HttpInput {
     server_handle: Arc<Mutex<Option<tokio::task::JoinHandle<Result<(), Error>>>>>,
     connected: AtomicBool,
 }
-
 
 type AppState = Arc<Mutex<VecDeque<MessageBatch>>>;
 
@@ -78,20 +77,19 @@ impl Input for HttpInput {
 
         let addr: SocketAddr = address
             .parse()
-            .map_err(|e| Error::Config(format!("无效的地址 {}: {}", address, e)))?;
+            .map_err(|e| Error::Config(format!("Invalid address {}: {}", address, e)))?;
 
         let server_handle = tokio::spawn(async move {
             axum::Server::bind(&addr)
                 .serve(app.into_make_service())
                 .await
-                .map_err(|e| Error::Connection(format!("HTTP服务器错误: {}", e)))
+                .map_err(|e| Error::Connection(format!("HTTP server error: {}", e)))
         });
 
         let server_handle_arc = self.server_handle.clone();
         let mut server_handle_arc_mutex = server_handle_arc.lock().await;
         *server_handle_arc_mutex = Some(server_handle);
-        self.connected
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.connected.store(true, Ordering::SeqCst);
 
         Ok(())
     }
@@ -101,7 +99,7 @@ impl Input for HttpInput {
             return Err(Error::Connection("The input is not connected".to_string()));
         }
 
-        // 尝试从队列中获取消息
+        // Try to get a message from the queue
         let msg_option;
         {
             let mut queue = self.queue.lock().await;
@@ -111,7 +109,7 @@ impl Input for HttpInput {
         if let Some(msg) = msg_option {
             Ok((msg, Arc::new(NoopAck)))
         } else {
-            // 如果队列为空，则等待一段时间后返回错误
+            // If the queue is empty, an error is returned after waiting for a while
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             Err(Error::Processing("The queue is empty".to_string()))
         }

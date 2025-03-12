@@ -37,3 +37,8 @@ jobs:
           -o ./coverage/lcov.info
           - name: Codecov
     - uses: codecov/codecov-action@v5
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true

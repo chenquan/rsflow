@@ -86,3 +86,185 @@ impl Input for MemoryInput {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_memory_input_new() {
+        // 测试创建MemoryInput实例，不带初始消息
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config);
+        assert!(input.is_ok());
+
+        // 测试创建MemoryInput实例，带初始消息
+        let messages = vec!["message1".to_string(), "message2".to_string()];
+        let config = MemoryInputConfig {
+            messages: Some(messages),
+        };
+        let input = MemoryInput::new(&config);
+        assert!(input.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_connect() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 测试连接
+        let result = input.connect().await;
+        assert!(result.is_ok());
+
+        // 验证连接状态
+        assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_without_connect() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 未连接时读取应该返回错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // 期望的错误类型
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_empty_queue() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+
+        // 队列为空，应该返回Done错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // 期望的错误类型
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_with_initial_messages() {
+        let messages = vec!["message1".to_string(), "message2".to_string()];
+        let config = MemoryInputConfig {
+            messages: Some(messages),
+        };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+
+        // 读取第一条消息
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
+        ack.ack().await;
+
+        // 读取第二条消息
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
+        ack.ack().await;
+
+        // 队列为空，应该返回Done错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // 期望的错误类型
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_push() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+
+        // 推送消息
+        let msg = MessageBatch::from_string("pushed message");
+        assert!(input.push(msg).await.is_ok());
+
+        // 读取推送的消息
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["pushed message"]);
+        ack.ack().await;
+
+        // 队列为空，应该返回Done错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // 期望的错误类型
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_close() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+        assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 关闭
+        assert!(input.close().await.is_ok());
+        assert!(!input.connected.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 关闭后读取应该返回错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // 期望的错误类型
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_multiple_push_read() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+
+        // 推送多条消息
+        let msg1 = MessageBatch::from_string("message1");
+        let msg2 = MessageBatch::from_string("message2");
+        let msg3 = MessageBatch::from_string("message3");
+
+        assert!(input.push(msg1).await.is_ok());
+        assert!(input.push(msg2).await.is_ok());
+        assert!(input.push(msg3).await.is_ok());
+
+        // 按顺序读取消息
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
+        ack.ack().await;
+
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
+        ack.ack().await;
+
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message3"]);
+        ack.ack().await;
+
+        // 队列为空，应该返回Done错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // 期望的错误类型
+            _ => panic!("Expected Done error"),
+        }
+    }
+}

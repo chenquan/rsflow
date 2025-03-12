@@ -47,6 +47,7 @@ regex = "1.8"
 axum = "0.6"
 reqwest = { version = "0.12", features = ["json"] }
 
+
 # 命令行工具
 clap = { version = "4.3", features = ["derive"] }
 colored = "2.0"
@@ -64,3 +65,9 @@ rdkafka-sys = "4.8.0"
 sasl2-sys = { version = "0.1.22", features = ["vendored"] }
 
 waitgroup = "0.1.2"
+
+[dev-dependencies]
+tempfile = "3.8.0"
+
+# 测试工具
+mockall = "0.12"

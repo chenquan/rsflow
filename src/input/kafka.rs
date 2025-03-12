@@ -161,3 +161,74 @@ impl Ack for KafkaAck {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Error;
+
+    #[tokio::test]
+    async fn test_kafka_input_new() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: Some("test-client".to_string()),
+            start_from_latest: false,
+        };
+
+        let input = KafkaInput::new(&config);
+        assert!(input.is_ok());
+        let input = input.unwrap();
+        assert_eq!(input.config.brokers, vec!["localhost:9092".to_string()]);
+        assert_eq!(input.config.topics, vec!["test-topic".to_string()]);
+        assert_eq!(input.config.consumer_group, "test-group".to_string());
+        assert_eq!(input.config.client_id, Some("test-client".to_string()));
+        assert_eq!(input.config.start_from_latest, false);
+    }
+
+    #[tokio::test]
+    async fn test_kafka_input_read_not_connected() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: None,
+            start_from_latest: true,
+        };
+
+        let input = KafkaInput::new(&config).unwrap();
+        // 尝试在未连接的情况下读取消息，应该返回错误
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(msg)) => {
+                assert_eq!(msg, "The input is not connected");
+            }
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_kafka_ack() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: None,
+            start_from_latest: true,
+        };
+
+        let input = KafkaInput::new(&config).unwrap();
+        let ack = KafkaAck {
+            consumer: input.consumer.clone(),
+            topic: "test-topic".to_string(),
+            partition: 0,
+            offset: 100,
+        };
+
+        // 测试确认消息，由于没有实际的消费者，不应该有任何效果
+        ack.ack().await;
+        // 这里主要测试ack方法不会panic
+    }
+}

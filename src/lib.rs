@@ -98,6 +98,14 @@ impl MessageBatch {
             }
         }
     }
+    /// Get the binary content of the message.
+    pub fn as_binary(&self) -> &Vec<Bytes> {
+        match &self.content {
+            Content::Arrow(_) => panic!("Cannot get binary content from Arrow message"),
+            Content::Binary(v) => v,
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

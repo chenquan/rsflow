@@ -123,3 +123,202 @@ impl Input for FileInput {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_file_input_new() {
+        let config = FileInputConfig {
+            path: "test.txt".to_string(),
+            close_on_eof: Some(true),
+            start_from_beginning: Some(true),
+        };
+        let input = FileInput::new(&config);
+        assert!(input.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_file_input_connect_file_not_exists() {
+        let config = FileInputConfig {
+            path: "non_existent_file.txt".to_string(),
+            close_on_eof: Some(true),
+            start_from_beginning: Some(true),
+        };
+        let input = FileInput::new(&config).unwrap();
+        let result = input.connect().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // 期望的错误类型
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_input_read_without_connect() {
+        let config = FileInputConfig {
+            path: "test.txt".to_string(),
+            close_on_eof: Some(true),
+            start_from_beginning: Some(true),
+        };
+        let input = FileInput::new(&config).unwrap();
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // 期望的错误类型
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_file_input_read_from_beginning() {
+        // 创建临时目录和文件
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        let file_path_str = file_path.to_str().unwrap();
+
+        // 写入测试数据
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(file, "line1").unwrap();
+        writeln!(file, "line2").unwrap();
+        writeln!(file, "line3").unwrap();
+        file.flush().unwrap();
+
+        // 配置从文件开头读取
+        let config = FileInputConfig {
+            path: file_path_str.to_string(),
+            close_on_eof: Some(true),
+            start_from_beginning: Some(true),
+        };
+        let input = FileInput::new(&config).unwrap();
+
+        // 连接并读取
+        assert!(input.connect().await.is_ok());
+
+        // 读取第一行
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["line1"]);
+        ack.ack().await;
+
+        // 读取第二行
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["line2"]);
+        ack.ack().await;
+
+        // 读取第三行
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["line3"]);
+        ack.ack().await;
+
+        // 文件结束，应返回Done错误
+        let result = input.read().await;
+        assert!(matches!(result, Err(Error::Done)));
+
+        // 关闭连接
+        assert!(input.close().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_file_input_read_from_end() {
+        // 创建临时目录和文件
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        let file_path_str = file_path.to_str().unwrap();
+
+        // 写入测试数据
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(file, "line1").unwrap();
+        writeln!(file, "line2").unwrap();
+        file.flush().unwrap();
+
+        // 配置从文件末尾读取
+        let config = FileInputConfig {
+            path: file_path_str.to_string(),
+            close_on_eof: Some(true),
+            start_from_beginning: Some(false),
+        };
+        let input = FileInput::new(&config).unwrap();
+
+        // 连接
+        assert!(input.connect().await.is_ok());
+
+        // 从末尾读取，应该没有数据，返回Done错误
+        let result = input.read().await;
+        assert!(matches!(result, Err(Error::Done)));
+
+        // 追加新数据
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(&file_path)
+            .unwrap();
+        writeln!(file, "line3").unwrap();
+        file.flush().unwrap();
+
+        // 重新连接
+        assert!(input.close().await.is_ok());
+        assert!(input.connect().await.is_ok());
+
+        // 现在应该能读取到新添加的行
+        let result = input.read().await;
+        assert!(matches!(result, Err(Error::Done))); // 仍然是从末尾读取，所以没有数据
+
+        // 关闭连接
+        assert!(input.close().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_file_input_close_on_eof_false() {
+        // 创建临时目录和文件
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+        let file_path_str = file_path.to_str().unwrap();
+
+        // 写入测试数据
+        let mut file = File::create(&file_path).unwrap();
+        writeln!(file, "line1").unwrap();
+        file.flush().unwrap();
+
+        // 配置读取完成后不关闭
+        let config = FileInputConfig {
+            path: file_path_str.to_string(),
+            close_on_eof: Some(false),
+            start_from_beginning: Some(true),
+        };
+        let input = FileInput::new(&config).unwrap();
+
+        // 连接并读取
+        assert!(input.connect().await.is_ok());
+
+        // 读取第一行
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["line1"]);
+        ack.ack().await;
+
+        // 文件结束，但不关闭，应返回Processing错误
+        let result = input.read().await;
+        assert!(matches!(result, Err(Error::Processing(_))));
+
+        // 追加新数据
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(&file_path)
+            .unwrap();
+        writeln!(file, "line2").unwrap();
+        file.flush().unwrap();
+
+        // 应该能读取到新添加的行
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await; // 等待一段时间确保文件写入完成
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["line2"]);
+        ack.ack().await;
+
+        // 关闭连接
+        assert!(input.close().await.is_ok());
+    }
+}

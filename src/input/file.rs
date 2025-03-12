@@ -17,15 +17,15 @@ use crate::{input::Input, Error, MessageBatch};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileInputConfig {
-    /// 输入文件路径
+    /// Input file path
     pub path: String,
-    /// 是否在读取完成后关闭
+    /// Whether to close after reading is complete
     pub close_on_eof: Option<bool>,
-    /// 是否从文件开头开始读取（否则从末尾开始）
+    /// Whether to start reading from the beginning of the file (otherwise start from the end)
     pub start_from_beginning: Option<bool>,
 }
 
-/// 文件输入组件
+/// File input component
 pub struct FileInput {
     config: FileInputConfig,
     reader: Arc<Mutex<Option<BufReader<File>>>>,
@@ -34,7 +34,7 @@ pub struct FileInput {
 }
 
 impl FileInput {
-    /// 创建一个新的文件输入组件
+    /// Create a new file input component
     pub fn new(config: &FileInputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
@@ -52,7 +52,7 @@ impl Input for FileInput {
 
         // Open the file
         let file = File::open(path)
-            .map_err(|e| Error::Connection(format!("无法打开文件 {}: {}", self.config.path, e)))?;
+            .map_err(|e| Error::Connection(format!("Unable to open file {}: {}", self.config.path, e)))?;
 
         let mut reader = BufReader::new(file);
 
@@ -60,7 +60,7 @@ impl Input for FileInput {
         if !self.config.start_from_beginning.unwrap_or(true) {
             reader
                 .seek(SeekFrom::End(0))
-                .map_err(|e| Error::Processing(format!("无法定位到文件末尾: {}", e)))?;
+                .map_err(|e| Error::Processing(format!("Unable to seek to end of file: {}", e)))?;
         }
 
         let reader_arc = self.reader.clone();
@@ -153,7 +153,7 @@ mod tests {
         let result = input.connect().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Connection(_)) => {} // 期望的错误类型
+            Err(Error::Connection(_)) => {} // Expected error type
             _ => panic!("Expected Connection error"),
         }
     }
@@ -169,26 +169,26 @@ mod tests {
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Connection(_)) => {} // 期望的错误类型
+            Err(Error::Connection(_)) => {} // Expected error type
             _ => panic!("Expected Connection error"),
         }
     }
 
     #[tokio::test]
     async fn test_file_input_read_from_beginning() {
-        // 创建临时目录和文件
+        // Create temporary directory and file
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
         let file_path_str = file_path.to_str().unwrap();
 
-        // 写入测试数据
+        // Write test data
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "line1").unwrap();
         writeln!(file, "line2").unwrap();
         writeln!(file, "line3").unwrap();
         file.flush().unwrap();
 
-        // 配置从文件开头读取
+        // Configure to read from the beginning of the file
         let config = FileInputConfig {
             path: file_path_str.to_string(),
             close_on_eof: Some(true),
@@ -196,46 +196,46 @@ mod tests {
         };
         let input = FileInput::new(&config).unwrap();
 
-        // 连接并读取
+        // Connect and read
         assert!(input.connect().await.is_ok());
 
-        // 读取第一行
+        // Read the first line
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["line1"]);
         ack.ack().await;
 
-        // 读取第二行
+        // Read the second line
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["line2"]);
         ack.ack().await;
 
-        // 读取第三行
+        // Read the third line
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["line3"]);
         ack.ack().await;
 
-        // 文件结束，应返回Done错误
+        // End of file, should return Done error
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Done)));
 
-        // 关闭连接
+        // Close the connection
         assert!(input.close().await.is_ok());
     }
 
     #[tokio::test]
     async fn test_file_input_read_from_end() {
-        // 创建临时目录和文件
+        // Create temporary directory and file
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
         let file_path_str = file_path.to_str().unwrap();
 
-        // 写入测试数据
+        // Write test data
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "line1").unwrap();
         writeln!(file, "line2").unwrap();
         file.flush().unwrap();
 
-        // 配置从文件末尾读取
+        // Configure to read from the end of the file
         let config = FileInputConfig {
             path: file_path_str.to_string(),
             close_on_eof: Some(true),
@@ -243,14 +243,14 @@ mod tests {
         };
         let input = FileInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
 
-        // 从末尾读取，应该没有数据，返回Done错误
+        // Reading from the end, should have no data, return Done error
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Done)));
 
-        // 追加新数据
+        // Append new data
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .append(true)
@@ -259,31 +259,31 @@ mod tests {
         writeln!(file, "line3").unwrap();
         file.flush().unwrap();
 
-        // 重新连接
+        // Reconnect
         assert!(input.close().await.is_ok());
         assert!(input.connect().await.is_ok());
 
-        // 现在应该能读取到新添加的行
+        // Now should be able to read the newly added line
         let result = input.read().await;
-        assert!(matches!(result, Err(Error::Done))); // 仍然是从末尾读取，所以没有数据
+        assert!(matches!(result, Err(Error::Done))); 
 
-        // 关闭连接
+        // Close the connection
         assert!(input.close().await.is_ok());
     }
 
     #[tokio::test]
     async fn test_file_input_close_on_eof_false() {
-        // 创建临时目录和文件
+        // Create temporary directory and file
         let dir = tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
         let file_path_str = file_path.to_str().unwrap();
 
-        // 写入测试数据
+        // Write test data
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "line1").unwrap();
         file.flush().unwrap();
 
-        // 配置读取完成后不关闭
+        // Configure not to close after reading is complete
         let config = FileInputConfig {
             path: file_path_str.to_string(),
             close_on_eof: Some(false),
@@ -291,19 +291,19 @@ mod tests {
         };
         let input = FileInput::new(&config).unwrap();
 
-        // 连接并读取
+        // Connect and read
         assert!(input.connect().await.is_ok());
 
-        // 读取第一行
+        // Read the first line
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["line1"]);
         ack.ack().await;
 
-        // 文件结束，但不关闭，应返回Processing错误
+        // End of file, but don't close, should return Processing error
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Processing(_))));
 
-        // 追加新数据
+        // Append new data
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .append(true)
@@ -312,13 +312,13 @@ mod tests {
         writeln!(file, "line2").unwrap();
         file.flush().unwrap();
 
-        // 应该能读取到新添加的行
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await; // 等待一段时间确保文件写入完成
+        // Should be able to read the newly added line
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["line2"]);
         ack.ack().await;
 
-        // 关闭连接
+        // Close the connection
         assert!(input.close().await.is_ok());
     }
 }

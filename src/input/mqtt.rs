@@ -17,7 +17,7 @@ use tracing::error;
 pub struct MqttInputConfig {
     /// MQTT broker address
     pub host: String,
-    /// MQTT proxy port
+    /// MQTT broker port
     pub port: u16,
     /// Client ID
     pub client_id: String,
@@ -25,13 +25,13 @@ pub struct MqttInputConfig {
     pub username: Option<String>,
     /// Password (optional)
     pub password: Option<String>,
-    /// Subscription topic list
+    /// List of topics to subscribe to
     pub topics: Vec<String>,
     /// Quality of Service (0, 1, 2)
     pub qos: Option<u8>,
-    /// Whether to clear the session
+    /// Whether to use clean session
     pub clean_session: Option<bool>,
-    /// Stay-at-a-time interval (seconds)
+    /// Keep alive interval (in seconds)
     pub keep_alive: Option<u64>,
 }
 
@@ -43,10 +43,12 @@ pub struct MqttInput {
     receiver: Arc<Receiver<MqttMsg>>,
     close_tx: broadcast::Sender<()>,
 }
+
 enum MqttMsg {
     Publish(Publish),
     Err(Error),
 }
+
 impl MqttInput {
     /// Create a new MQTT input component
     pub fn new(config: &MqttInputConfig) -> Result<Self, Error> {
@@ -79,19 +81,19 @@ impl Input for MqttInput {
             mqtt_options.set_keep_alive(std::time::Duration::from_secs(keep_alive));
         }
 
-        // Set up a purge session
+        // Set up a clean session
         if let Some(clean_session) = self.config.clean_session {
             mqtt_options.set_clean_session(clean_session);
         }
 
         // Create an MQTT client
         let (client, mut eventloop) = AsyncClient::new(mqtt_options, 10);
-        // Subscribe to a topic
+        // Subscribe to topics
         let qos_level = match self.config.qos {
             Some(0) => QoS::AtMostOnce,
             Some(1) => QoS::AtLeastOnce,
             Some(2) => QoS::ExactlyOnce,
-            _ => QoS::AtLeastOnce, // The default is QoS 1
+            _ => QoS::AtLeastOnce, // Default is QoS 1
         };
 
         for topic in &self.config.topics {
@@ -126,8 +128,8 @@ impl Input for MqttInput {
                                 }
                             }
                             Err(e) => {
-                               // Log the error and try to wait a short time before continuing
-                                error!("The MQTT event loop is incorrect: {}", e);
+                               // Log the error and wait a short time before continuing
+                                error!("MQTT event loop error: {}", e);
                                 match sender_arc.send_async(MqttMsg::Err(Error::Disconnection)).await {
                                         Ok(_) => {}
                                         Err(e) => {
@@ -215,5 +217,173 @@ impl Ack for MqttAck {
                 error!("{}", e);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_mqtt_input_new() {
+        let config = MqttInputConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            topics: vec!["test/topic".to_string()],
+            qos: Some(1),
+            clean_session: Some(true),
+            keep_alive: Some(60),
+        };
+
+        let input = MqttInput::new(&config);
+        assert!(input.is_ok());
+        let input = input.unwrap();
+        assert_eq!(input.config.host, "localhost");
+        assert_eq!(input.config.port, 1883);
+        assert_eq!(input.config.client_id, "test-client");
+        assert_eq!(input.config.username, Some("user".to_string()));
+        assert_eq!(input.config.password, Some("pass".to_string()));
+        assert_eq!(input.config.topics, vec!["test/topic".to_string()]);
+        assert_eq!(input.config.qos, Some(1));
+        assert_eq!(input.config.clean_session, Some(true));
+        assert_eq!(input.config.keep_alive, Some(60));
+    }
+
+    #[tokio::test]
+    async fn test_mqtt_input_read_not_connected() {
+        let config = MqttInputConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: None,
+            password: None,
+            topics: vec!["test/topic".to_string()],
+            qos: None,
+            clean_session: None,
+            keep_alive: None,
+        };
+
+        let input = MqttInput::new(&config).unwrap();
+        // Try to read a message without connection, should return an error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Disconnection) => {}
+            _ => panic!("Expected Disconnection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mqtt_input_close() {
+        let config = MqttInputConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: None,
+            password: None,
+            topics: vec!["test/topic".to_string()],
+            qos: None,
+            clean_session: None,
+            keep_alive: None,
+        };
+
+        let input = MqttInput::new(&config).unwrap();
+        // Test closing operation, should succeed even if not connected
+        let result = input.close().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mqtt_input_message_processing() {
+        let config = MqttInputConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: None,
+            password: None,
+            topics: vec!["test/topic".to_string()],
+            qos: None,
+            clean_session: None,
+            keep_alive: None,
+        };
+
+        let input = MqttInput::new(&config).unwrap();
+        
+        // Manually send a message to the receive queue
+        let test_payload = "test message".as_bytes().to_vec();
+        let publish = Publish {
+            dup: false,
+            qos: QoS::AtLeastOnce,
+            retain: false,
+            topic: "test/topic".to_string(),
+            pkid: 1,
+            payload: test_payload.into(),
+        };
+
+        // Send message to queue
+        input.sender.send_async(MqttMsg::Publish(publish)).await.unwrap();
+
+        // Simulate connection status
+        let client = AsyncClient::new(
+            MqttOptions::new("test-client", "localhost", 1883),
+            10
+        ).0;
+        input.client.lock().await.replace(client);
+
+        // Read message and verify
+        let result = input.read().await;
+        assert!(result.is_ok());
+        let (msg, ack) = result.unwrap();
+        
+        // Verify message content
+        let content = msg.as_string().unwrap();
+        assert_eq!(content, vec!["test message"]);
+        
+        // Test message acknowledgment
+        ack.ack().await;
+        
+        // Close connection
+        assert!(input.close().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mqtt_input_error_handling() {
+        let config = MqttInputConfig {
+            host: "localhost".to_string(),
+            port: 1883,
+            client_id: "test-client".to_string(),
+            username: None,
+            password: None,
+            topics: vec!["test/topic".to_string()],
+            qos: None,
+            clean_session: None,
+            keep_alive: None,
+        };
+
+        let input = MqttInput::new(&config).unwrap();
+        
+        // Simulate connection status
+        let client = AsyncClient::new(
+            MqttOptions::new("test-client", "localhost", 1883),
+            10
+        ).0;
+        input.client.lock().await.replace(client);
+        
+        // Send error message to queue
+        input.sender.send_async(MqttMsg::Err(Error::Disconnection)).await.unwrap();
+        
+        // Read message and verify error handling
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Disconnection) => {}
+            _ => panic!("Expected Disconnection error"),
+        }
+        
+        // Close connection
+        assert!(input.close().await.is_ok());
     }
 }

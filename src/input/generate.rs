@@ -46,7 +46,7 @@ impl Input for GenerateInput {
             if current_count >= count as i64 {
                 return Err(Error::Done);
             }
-            // 检查添加当前批次后是否会超过总数限制
+            // Check if adding the current batch would exceed the total count limit
             if current_count + self.batch_size as i64 > count as i64 {
                 return Err(Error::Done);
             }
@@ -84,7 +84,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_input_new() {
-        // 测试创建GenerateInput实例
+        // Test creating GenerateInput instance
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -97,7 +97,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_input_default_batch_size() {
-        // 测试默认批处理大小
+        // Test default batch size
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -105,12 +105,12 @@ mod tests {
             batch_size: None,
         };
         let input = GenerateInput::new(config).unwrap();
-        assert_eq!(input.batch_size, 1); // 默认批处理大小应为1
+        assert_eq!(input.batch_size, 1); // Default batch size should be 1
     }
 
     #[tokio::test]
     async fn test_generate_input_connect() {
-        // 测试连接方法
+        // Test connection method
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -118,12 +118,12 @@ mod tests {
             batch_size: Some(2),
         };
         let input = GenerateInput::new(config).unwrap();
-        assert!(input.connect().await.is_ok()); // 连接应该成功
+        assert!(input.connect().await.is_ok()); // Connection should succeed
     }
 
     #[tokio::test]
     async fn test_generate_input_read() {
-        // 测试读取消息
+        // Test reading messages
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -132,38 +132,38 @@ mod tests {
         };
         let input = GenerateInput::new(config).unwrap();
 
-        // 读取第一批消息
+        // Read the first batch of messages
         let (batch, ack) = input.read().await.unwrap();
         let messages = batch.as_binary();
-        assert_eq!(messages.len(), 2); // 批处理大小为2
+        assert_eq!(messages.len(), 2); // Batch size is 2
         for msg in messages {
             assert_eq!(String::from_utf8(msg.to_vec()).unwrap(), "test message");
         }
         ack.ack().await;
 
-        // 读取第二批消息
+        // Read the second batch of messages
         let (batch, ack) = input.read().await.unwrap();
         let messages = batch.as_binary();
         assert_eq!(messages.len(), 2);
         ack.ack().await;
 
-        // 读取第三批消息 (已达到count=5的上限，因为2+2+2>5)
+        // Read the third batch of messages (reached the limit of count=5, because 2+2+2>5)
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Done)));
     }
 
     #[tokio::test]
     async fn test_generate_input_without_count_limit() {
-        // 测试没有消息数量限制的情况
+        // Test the case without message count limit
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
-            count: None, // 无限制
+            count: None, // No limit
             batch_size: Some(1),
         };
         let input = GenerateInput::new(config).unwrap();
 
-        // 可以连续读取多次
+        // Can read multiple times consecutively
         for _ in 0..10 {
             let result = input.read().await;
             assert!(result.is_ok());
@@ -176,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_input_close() {
-        // 测试关闭连接
+        // Test closing connection
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -184,12 +184,12 @@ mod tests {
             batch_size: Some(2),
         };
         let input = GenerateInput::new(config).unwrap();
-        assert!(input.close().await.is_ok()); // 关闭应该成功
+        assert!(input.close().await.is_ok()); // Closing should succeed
     }
 
     #[tokio::test]
     async fn test_generate_input_exact_count() {
-        // 测试精确的计数限制
+        // Test exact count limit
         let config = GenerateConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
@@ -198,22 +198,22 @@ mod tests {
         };
         let input = GenerateInput::new(config).unwrap();
 
-        // 读取第一批消息 (2条)
+        // Read the first batch of messages (2 messages)
         let result = input.read().await;
         assert!(result.is_ok());
 
-        // 读取第二批消息 (2条，正好达到限制)
+        // Read the second batch of messages (2 messages, reaching the limit)
         let result = input.read().await;
         assert!(result.is_ok());
 
-        // 尝试读取第三批消息 (应该返回Done错误)
+        // Try to read the third batch of messages (should return Done error)
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Done)));
     }
 
     #[tokio::test]
     async fn test_deserialize_duration() {
-        // 测试从JSON反序列化
+        // Test deserialization from JSON
         let json = r#"{
             "context": "test message",
             "interval": "10ms",

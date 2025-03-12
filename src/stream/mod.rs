@@ -36,7 +36,7 @@ impl Stream {
 
     /// Running stream processing
     pub async fn run(&mut self) -> Result<(), Error> {
-        // Connecting input and output
+        // Connect input and output
         self.input.connect().await?;
         self.output.connect().await?;
 
@@ -63,11 +63,11 @@ impl Stream {
                 loop {
                     match input_receiver.recv_async().await {
                         Ok((msg, ack)) => {
-                            // Processing messages through a pipeline
+                            // Process messages through pipeline
                             debug!("Processing input message: {:?}", &msg.as_string());
                             let processed = pipeline.process(msg).await;
 
-                            // Processing result message
+                            // Process result messages
                             match processed {
                                 Ok(msgs) => {
                                     for x in &msgs {
@@ -110,7 +110,7 @@ impl Stream {
                         }
                     }
 
-                    // Confirmation that the message has been successfully processed.
+                    // Confirm that the message has been successfully processed
                     if size == &success_cnt {
                         msg.1.ack().await;
                     }
@@ -123,7 +123,7 @@ impl Stream {
 
         wg.wait();
 
-        info!("Closing......");
+        info!("Closing....");
         self.close().await?;
         info!("close.");
 
@@ -136,7 +136,7 @@ impl Stream {
         _worker: Worker,
         output_arc: Arc<dyn Output>,
     ) {
-        // 设置信号处理器
+        // Set up signal handlers
         let mut sigint = signal(SignalKind::interrupt()).expect("Failed to set signal handler");
         let mut sigterm = signal(SignalKind::terminate()).expect("Failed to set signal handler");
 
@@ -162,7 +162,7 @@ impl Stream {
                     Err(e) => {
                         match e {
                             Error::Done => {
-                                // 输入完成时，关闭发送端以通知所有工作线程
+                                // When input is complete, close the sender to notify all workers
                                 return;
                             }
                             Error::Disconnection => loop {
@@ -194,7 +194,7 @@ impl Stream {
     }
 
     pub async fn close(&mut self) -> Result<(), Error> {
-        // 关闭顺序：输入 -> 管道 -> 缓冲区 -> 输出
+        // Closing order: input -> pipeline -> buffer -> output
         self.input.close().await?;
         self.pipeline.close().await?;
         self.output.close().await?;

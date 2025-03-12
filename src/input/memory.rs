@@ -66,7 +66,7 @@ impl Input for MemoryInput {
             return Err(Error::Connection("The input is not connected".to_string()));
         }
 
-        // 尝试从队列中获取消息
+        // Try to get a message from the queue
         let msg_option;
         {
             let mut queue = self.queue.lock().await;
@@ -93,12 +93,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_input_new() {
-        // 测试创建MemoryInput实例，不带初始消息
+        // Test creating MemoryInput instance without initial messages
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config);
         assert!(input.is_ok());
 
-        // 测试创建MemoryInput实例，带初始消息
+        // Test creating MemoryInput instance with initial messages
         let messages = vec!["message1".to_string(), "message2".to_string()];
         let config = MemoryInputConfig {
             messages: Some(messages),
@@ -112,11 +112,11 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 测试连接
+        // Test connection
         let result = input.connect().await;
         assert!(result.is_ok());
 
-        // 验证连接状态
+        // Verify connection status
         assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
     }
 
@@ -125,11 +125,11 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 未连接时读取应该返回错误
+        // Reading without connection should return an error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Connection(_)) => {} // 期望的错误类型
+            Err(Error::Connection(_)) => {} // Expected error type
             _ => panic!("Expected Connection error"),
         }
     }
@@ -139,14 +139,14 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
 
-        // 队列为空，应该返回Done错误
+        // Queue is empty, should return Done error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Done) => {} // 期望的错误类型
+            Err(Error::Done) => {} // Expected error type
             _ => panic!("Expected Done error"),
         }
     }
@@ -159,24 +159,24 @@ mod tests {
         };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
 
-        // 读取第一条消息
+        // Read the first message
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
         ack.ack().await;
 
-        // 读取第二条消息
+        // Read the second message
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
         ack.ack().await;
 
-        // 队列为空，应该返回Done错误
+        // Queue is empty, should return Done error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Done) => {} // 期望的错误类型
+            Err(Error::Done) => {} // Expected error type
             _ => panic!("Expected Done error"),
         }
     }
@@ -186,23 +186,23 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
 
-        // 推送消息
+        // Push message
         let msg = MessageBatch::from_string("pushed message");
         assert!(input.push(msg).await.is_ok());
 
-        // 读取推送的消息
+        // Read the pushed message
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["pushed message"]);
         ack.ack().await;
 
-        // 队列为空，应该返回Done错误
+        // Queue is empty, should return Done error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Done) => {} // 期望的错误类型
+            Err(Error::Done) => {} // Expected error type
             _ => panic!("Expected Done error"),
         }
     }
@@ -212,19 +212,19 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
         assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 关闭
+        // Close
         assert!(input.close().await.is_ok());
         assert!(!input.connected.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 关闭后读取应该返回错误
+        // Reading after close should return error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Connection(_)) => {} // 期望的错误类型
+            Err(Error::Connection(_)) => {} // Expected error type
             _ => panic!("Expected Connection error"),
         }
     }
@@ -234,10 +234,10 @@ mod tests {
         let config = MemoryInputConfig { messages: None };
         let input = MemoryInput::new(&config).unwrap();
 
-        // 连接
+        // Connect
         assert!(input.connect().await.is_ok());
 
-        // 推送多条消息
+        // Push multiple messages
         let msg1 = MessageBatch::from_string("message1");
         let msg2 = MessageBatch::from_string("message2");
         let msg3 = MessageBatch::from_string("message3");
@@ -246,7 +246,7 @@ mod tests {
         assert!(input.push(msg2).await.is_ok());
         assert!(input.push(msg3).await.is_ok());
 
-        // 按顺序读取消息
+        // Read messages in order
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
         ack.ack().await;
@@ -259,11 +259,11 @@ mod tests {
         assert_eq!(batch.as_string().unwrap(), vec!["message3"]);
         ack.ack().await;
 
-        // 队列为空，应该返回Done错误
+        // Queue is empty, should return Done error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
-            Err(Error::Done) => {} // 期望的错误类型
+            Err(Error::Done) => {} // Expected error type
             _ => panic!("Expected Done error"),
         }
     }

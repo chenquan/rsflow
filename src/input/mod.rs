@@ -1,4 +1,4 @@
-//! Input the component module
+//! Input component module
 //!
 //! The input component is responsible for receiving data from various sources such as message queues, file systems, HTTP endpoints, and so on.
 
@@ -40,7 +40,7 @@ impl Ack for NoopAck {
     async fn ack(&self) {}
 }
 
-/// Input the configuration
+/// Input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputConfig {
@@ -89,8 +89,8 @@ mod tests {
             start_from_beginning: Some(false),
         });
         let input = InputConfig::build(&config).unwrap();
-        // 验证构建的输入组件是否能够正确连接和关闭
-        assert!(input.connect().await.is_err()); // 文件不存在，应该返回错误
+        // Verify that the built input component can connect and close correctly
+        assert!(input.connect().await.is_err()); // File does not exist, should return error
     }
 
     #[tokio::test]
@@ -102,13 +102,13 @@ mod tests {
             "batch_size": 2
         }"#).unwrap());
         let input = InputConfig::build(&config).unwrap();
-        // 验证生成输入组件能够正确连接
+        // Verify that the generate input component can connect correctly
         assert!(input.connect().await.is_ok());
-        // 读取消息并验证
+        // Read message and verify
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["test message", "test message"]);
         ack.ack().await;
-        // 关闭连接
+        // Close connection
         assert!(input.close().await.is_ok());
     }
 
@@ -119,19 +119,19 @@ mod tests {
             messages: Some(messages),
         });
         let input = InputConfig::build(&config).unwrap();
-        // 验证内存输入组件能够正确连接
+        // Verify that the memory input component can connect correctly
         assert!(input.connect().await.is_ok());
-        // 读取消息并验证
+        // Read message and verify
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
         ack.ack().await;
-        // 读取第二条消息
+        // Read the second message
         let (batch, ack) = input.read().await.unwrap();
         assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
         ack.ack().await;
-        // 队列为空，应该返回Done错误
+        // Queue is empty, should return Done error
         assert!(matches!(input.read().await, Err(Error::Done)));
-        // 关闭连接
+        // Close connection
         assert!(input.close().await.is_ok());
     }
 
@@ -142,14 +142,14 @@ mod tests {
             "create_table_sql": "CREATE TABLE test (id INT, name VARCHAR)"
         }"#).unwrap());
         let input = InputConfig::build(&config).unwrap();
-        // 验证SQL输入组件能够正确连接
+        // Verify that the SQL input component can connect correctly
         assert!(input.connect().await.is_ok());
-        // 读取消息
+        // Read message
         let (_, ack) = input.read().await.unwrap();
         ack.ack().await;
-        // 再次读取应该返回Done错误，因为SQL输入只读取一次
+        // Reading again should return Done error, because SQL input only reads once
         assert!(matches!(input.read().await, Err(Error::Done)));
-        // 关闭连接
+        // Close connection
         assert!(input.close().await.is_ok());
     }
 
@@ -161,9 +161,9 @@ mod tests {
             cors_enabled: Some(false),
         });
         let input = InputConfig::build(&config).unwrap();
-        // 验证HTTP输入组件能够正确连接
+        // Verify that the HTTP input component can connect correctly
         assert!(input.connect().await.is_ok());
-        // 关闭连接
+        // Close connection
         assert!(input.close().await.is_ok());
     }
 
@@ -176,7 +176,7 @@ mod tests {
             start_from_beginning: Some(false),
         });
         let input = InputConfig::build(&config);
-        assert!(input.is_ok()); // 构建时不会检查路径有效性
+        assert!(input.is_ok()); // Path validity is not checked during construction
 
         // 测试无效的HTTP地址
         let config = InputConfig::Http(http::HttpInputConfig {
@@ -185,7 +185,7 @@ mod tests {
             cors_enabled: Some(false),
         });
         let input = InputConfig::build(&config);
-        assert!(input.is_ok()); // 构建时不会检查地址有效性
+        assert!(input.is_ok()); // Address validity is not checked during construction
     }
     
     #[tokio::test]
@@ -202,7 +202,7 @@ mod tests {
             keep_alive: Some(60),
         });
         let input = InputConfig::build(&config);
-        assert!(input.is_ok()); // 验证MQTT配置能够正确构建输入组件
+        assert!(input.is_ok()); // Verify that MQTT configuration can correctly build input component
     }
     
     #[tokio::test]
@@ -215,6 +215,6 @@ mod tests {
             start_from_latest: false,
         });
         let input = InputConfig::build(&config);
-        assert!(input.is_ok()); // 验证Kafka配置能够正确构建输入组件
+        assert!(input.is_ok()); // Verify that Kafka configuration can correctly build input component
     }
 }

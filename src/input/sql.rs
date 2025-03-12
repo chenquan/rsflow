@@ -158,7 +158,7 @@ mod tests {
             _ => panic!("Expected Arrow content"),
         }
 
-        // 验证幂等性（第二次读取应该返回Done错误）
+        // Verify idempotency (second read should return Done error)
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Done)));
 

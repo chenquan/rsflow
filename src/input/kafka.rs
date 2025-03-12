@@ -82,7 +82,7 @@ impl Input for KafkaInput {
             Error::Connection(format!("You cannot subscribe to a Kafka topic: {}", e))
         })?;
 
-        // 更新消费者和连接状态
+        // Update consumer and connection status
         let consumer_arc = self.consumer.clone();
         let mut consumer_guard = consumer_arc.write().await;
         *consumer_guard = Some(consumer);
@@ -100,7 +100,7 @@ impl Input for KafkaInput {
 
         match consumer.recv().await {
             Ok(kafka_message) => {
-                // 从Kafka消息创建内部消息
+                // Create internal message from Kafka message
                 let payload = kafka_message.payload().ok_or_else(|| {
                     Error::Processing("The Kafka message has no content".to_string())
                 })?;
@@ -109,7 +109,7 @@ impl Input for KafkaInput {
                 binary_data.push(payload.to_vec());
                 let msg_batch = MessageBatch::new_binary(binary_data);
 
-                // 创建确认对象
+                // Create acknowledgment object
                 let topic = kafka_message.topic().to_string();
                 let partition = kafka_message.partition();
                 let offset = kafka_message.offset();
@@ -124,7 +124,7 @@ impl Input for KafkaInput {
                 Ok((msg_batch, Arc::new(ack)))
             }
             Err(e) => Err(Error::Connection(format!(
-                "The Kafka message was received incorrectly: {}",
+                "Error receiving Kafka message: {}",
                 e
             ))),
         }
@@ -134,14 +134,14 @@ impl Input for KafkaInput {
         let mut consumer_guard = self.consumer.write().await;
         if let Some(consumer) = consumer_guard.take() {
             if let Err(e) = consumer.unassign() {
-                tracing::warn!("You cannot cancel a Kafka consumer allocation: {}", e);
+                tracing::warn!("Error unassigning Kafka consumer: {}", e);
             }
         }
         Ok(())
     }
 }
 
-/// Kafka message confirmation
+/// Kafka message acknowledgment
 pub struct KafkaAck {
     consumer: Arc<RwLock<Option<StreamConsumer>>>,
     topic: String,
@@ -156,7 +156,7 @@ impl Ack for KafkaAck {
         let consumer_mutex_guard = self.consumer.read().await;
         if let Some(v) = &*consumer_mutex_guard {
             if let Err(e) = v.store_offset(&self.topic, self.partition, self.offset) {
-                tracing::error!("Unable to commit Kafka offset: {}", e);
+                tracing::error!("Error committing Kafka offset: {}", e);
             }
         }
     }
@@ -198,7 +198,7 @@ mod tests {
         };
 
         let input = KafkaInput::new(&config).unwrap();
-        // 尝试在未连接的情况下读取消息，应该返回错误
+        // Try to read in unconnected state, should return error
         let result = input.read().await;
         assert!(result.is_err());
         match result {
@@ -227,8 +227,8 @@ mod tests {
             offset: 100,
         };
 
-        // 测试确认消息，由于没有实际的消费者，不应该有任何效果
+        // Test acknowledgment, should have no effect since there is no actual consumer
         ack.ack().await;
-        // 这里主要测试ack方法不会panic
+        // This test mainly verifies that the ack method does not panic
     }
 }

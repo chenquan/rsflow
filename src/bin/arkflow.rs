@@ -13,7 +13,6 @@ use arkflow::config::EngineConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 解析命令行参数
     let matches = Command::new("arkflow")
         .version("0.1.0")
         .author("chenquan")

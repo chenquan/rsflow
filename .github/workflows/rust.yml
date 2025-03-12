@@ -16,29 +16,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Install dependencies
-      run: |
-        sudo apt-get install -y llvm
-        cargo install grcov
     - name: Build
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
 
-    - name: Generate coverage report
-      run: |
-        grcov . \
-          --binary-path ./target/debug/ \
-          -s . \
-          -t lcov \
-          --llvm \
-          --branch \
-          --ignore-not-existing \
-          -o ./coverage/lcov.info
-          - name: Codecov
-    - uses: codecov/codecov-action@v5
+    - name: rust-grcov
+      uses: actions-rs/grcov@v0.1
+    - name: Codecov
+      uses: codecov/codecov-action@v5
       with:
-        file: ./coverage/lcov.info
-        flags: unittests
-        name: codecov-umbrella
+        # Repository upload token - get it from codecov.io. Required only for private repositories
+        # token: # optional
+        # Specify whether the Codecov output should be verbose
+        verbose: true
         fail_ci_if_error: true

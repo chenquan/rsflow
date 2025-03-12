@@ -1,4 +1,4 @@
-//! 管道组件模块Pipe Component Module
+//! Pipeline Component Module
 //!
 //! A pipeline is an ordered collection of processors that defines how data flows from input to output, through a series of processing steps.
 

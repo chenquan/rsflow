@@ -82,7 +82,7 @@ impl Input for KafkaInput {
             Error::Connection(format!("You cannot subscribe to a Kafka topic: {}", e))
         })?;
 
-        // 更新消费者和连接状态
+        // Update consumer and connection status
         let consumer_arc = self.consumer.clone();
         let mut consumer_guard = consumer_arc.write().await;
         *consumer_guard = Some(consumer);
@@ -100,7 +100,7 @@ impl Input for KafkaInput {
 
         match consumer.recv().await {
             Ok(kafka_message) => {
-                // 从Kafka消息创建内部消息
+                // Create internal message from Kafka message
                 let payload = kafka_message.payload().ok_or_else(|| {
                     Error::Processing("The Kafka message has no content".to_string())
                 })?;
@@ -109,7 +109,7 @@ impl Input for KafkaInput {
                 binary_data.push(payload.to_vec());
                 let msg_batch = MessageBatch::new_binary(binary_data);
 
-                // 创建确认对象
+                // Create acknowledgment object
                 let topic = kafka_message.topic().to_string();
                 let partition = kafka_message.partition();
                 let offset = kafka_message.offset();
@@ -124,7 +124,7 @@ impl Input for KafkaInput {
                 Ok((msg_batch, Arc::new(ack)))
             }
             Err(e) => Err(Error::Connection(format!(
-                "The Kafka message was received incorrectly: {}",
+                "Error receiving Kafka message: {}",
                 e
             ))),
         }
@@ -134,14 +134,14 @@ impl Input for KafkaInput {
         let mut consumer_guard = self.consumer.write().await;
         if let Some(consumer) = consumer_guard.take() {
             if let Err(e) = consumer.unassign() {
-                tracing::warn!("You cannot cancel a Kafka consumer allocation: {}", e);
+                tracing::warn!("Error unassigning Kafka consumer: {}", e);
             }
         }
         Ok(())
     }
 }
 
-/// Kafka message confirmation
+/// Kafka message acknowledgment
 pub struct KafkaAck {
     consumer: Arc<RwLock<Option<StreamConsumer>>>,
     topic: String,
@@ -156,8 +156,79 @@ impl Ack for KafkaAck {
         let consumer_mutex_guard = self.consumer.read().await;
         if let Some(v) = &*consumer_mutex_guard {
             if let Err(e) = v.store_offset(&self.topic, self.partition, self.offset) {
-                tracing::error!("Unable to commit Kafka offset: {}", e);
+                tracing::error!("Error committing Kafka offset: {}", e);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Error;
+
+    #[tokio::test]
+    async fn test_kafka_input_new() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: Some("test-client".to_string()),
+            start_from_latest: false,
+        };
+
+        let input = KafkaInput::new(&config);
+        assert!(input.is_ok());
+        let input = input.unwrap();
+        assert_eq!(input.config.brokers, vec!["localhost:9092".to_string()]);
+        assert_eq!(input.config.topics, vec!["test-topic".to_string()]);
+        assert_eq!(input.config.consumer_group, "test-group".to_string());
+        assert_eq!(input.config.client_id, Some("test-client".to_string()));
+        assert_eq!(input.config.start_from_latest, false);
+    }
+
+    #[tokio::test]
+    async fn test_kafka_input_read_not_connected() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: None,
+            start_from_latest: true,
+        };
+
+        let input = KafkaInput::new(&config).unwrap();
+        // Try to read in unconnected state, should return error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(msg)) => {
+                assert_eq!(msg, "The input is not connected");
+            }
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_kafka_ack() {
+        let config = KafkaInputConfig {
+            brokers: vec!["localhost:9092".to_string()],
+            topics: vec!["test-topic".to_string()],
+            consumer_group: "test-group".to_string(),
+            client_id: None,
+            start_from_latest: true,
+        };
+
+        let input = KafkaInput::new(&config).unwrap();
+        let ack = KafkaAck {
+            consumer: input.consumer.clone(),
+            topic: "test-topic".to_string(),
+            partition: 0,
+            offset: 100,
+        };
+
+        // Test acknowledgment, should have no effect since there is no actual consumer
+        ack.ack().await;
+        // This test mainly verifies that the ack method does not panic
     }
 }

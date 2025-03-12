@@ -66,7 +66,7 @@ impl Input for MemoryInput {
             return Err(Error::Connection("The input is not connected".to_string()));
         }
 
-        // 尝试从队列中获取消息
+        // Try to get a message from the queue
         let msg_option;
         {
             let mut queue = self.queue.lock().await;
@@ -84,5 +84,187 @@ impl Input for MemoryInput {
         self.connected
             .store(false, std::sync::atomic::Ordering::SeqCst);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_memory_input_new() {
+        // Test creating MemoryInput instance without initial messages
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config);
+        assert!(input.is_ok());
+
+        // Test creating MemoryInput instance with initial messages
+        let messages = vec!["message1".to_string(), "message2".to_string()];
+        let config = MemoryInputConfig {
+            messages: Some(messages),
+        };
+        let input = MemoryInput::new(&config);
+        assert!(input.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_connect() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Test connection
+        let result = input.connect().await;
+        assert!(result.is_ok());
+
+        // Verify connection status
+        assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_without_connect() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Reading without connection should return an error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // Expected error type
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_empty_queue() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Connect
+        assert!(input.connect().await.is_ok());
+
+        // Queue is empty, should return Done error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // Expected error type
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_read_with_initial_messages() {
+        let messages = vec!["message1".to_string(), "message2".to_string()];
+        let config = MemoryInputConfig {
+            messages: Some(messages),
+        };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Connect
+        assert!(input.connect().await.is_ok());
+
+        // Read the first message
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
+        ack.ack().await;
+
+        // Read the second message
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
+        ack.ack().await;
+
+        // Queue is empty, should return Done error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // Expected error type
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_push() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Connect
+        assert!(input.connect().await.is_ok());
+
+        // Push message
+        let msg = MessageBatch::from_string("pushed message");
+        assert!(input.push(msg).await.is_ok());
+
+        // Read the pushed message
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["pushed message"]);
+        ack.ack().await;
+
+        // Queue is empty, should return Done error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // Expected error type
+            _ => panic!("Expected Done error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_close() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Connect
+        assert!(input.connect().await.is_ok());
+        assert!(input.connected.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Close
+        assert!(input.close().await.is_ok());
+        assert!(!input.connected.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Reading after close should return error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Connection(_)) => {} // Expected error type
+            _ => panic!("Expected Connection error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_memory_input_multiple_push_read() {
+        let config = MemoryInputConfig { messages: None };
+        let input = MemoryInput::new(&config).unwrap();
+
+        // Connect
+        assert!(input.connect().await.is_ok());
+
+        // Push multiple messages
+        let msg1 = MessageBatch::from_string("message1");
+        let msg2 = MessageBatch::from_string("message2");
+        let msg3 = MessageBatch::from_string("message3");
+
+        assert!(input.push(msg1).await.is_ok());
+        assert!(input.push(msg2).await.is_ok());
+        assert!(input.push(msg3).await.is_ok());
+
+        // Read messages in order
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message1"]);
+        ack.ack().await;
+
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message2"]);
+        ack.ack().await;
+
+        let (batch, ack) = input.read().await.unwrap();
+        assert_eq!(batch.as_string().unwrap(), vec!["message3"]);
+        ack.ack().await;
+
+        // Queue is empty, should return Done error
+        let result = input.read().await;
+        assert!(result.is_err());
+        match result {
+            Err(Error::Done) => {} // Expected error type
+            _ => panic!("Expected Done error"),
+        }
     }
 }

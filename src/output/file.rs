@@ -16,11 +16,11 @@ use tokio::sync::Mutex;
 /// File output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileOutputConfig {
-    /// 输出文件路径
+    /// Output file path
     pub path: String,
-    /// 是否在每条消息后添加换行符
+    /// Whether to add a newline after each message
     pub append_newline: Option<bool>,
-    /// 是否追加到文件末尾（而不是覆盖）
+    /// Whether to append to the end of the file (instead of overwriting)
     pub append: Option<bool>,
 }
 

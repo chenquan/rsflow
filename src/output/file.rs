@@ -101,3 +101,102 @@ impl Output for FileOutput {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::fs::read_to_string;
+
+    /// Test creating new file and writing content
+    #[tokio::test]
+    async fn test_create_and_write_to_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.txt");
+
+        let config = FileOutputConfig {
+            path: file_path.to_str().unwrap().to_string(),
+            append_newline: Some(true),
+            append: Some(false),
+        };
+
+        let output = FileOutput::new(&config).unwrap();
+        output.connect().await.unwrap();
+
+        let msg = MessageBatch::from_string("test content");
+        output.write(&msg).await.unwrap();
+        output.close().await.unwrap();
+
+        let content = read_to_string(&file_path).await.unwrap();
+        assert_eq!(content, "test content\n");
+    }
+
+    /// Test appending to existing file
+    #[tokio::test]
+    async fn test_append_mode() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("append.txt");
+
+        let config = FileOutputConfig {
+            path: file_path.to_str().unwrap().to_string(),
+            append_newline: Some(false),
+            append: Some(true),
+        };
+
+        let output = FileOutput::new(&config).unwrap();
+        output.connect().await.unwrap();
+
+        // First write
+        output
+            .write(&MessageBatch::from_string("first"))
+            .await
+            .unwrap();
+        // Second write
+        output
+            .write(&MessageBatch::from_string("second"))
+            .await
+            .unwrap();
+        output.close().await.unwrap();
+
+        let content = read_to_string(&file_path).await.unwrap();
+        assert_eq!(content, "firstsecond");
+    }
+
+    /// Test newline configuration handling
+    #[tokio::test]
+    async fn test_newline_configuration() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("newline.txt");
+
+        let config = FileOutputConfig {
+            path: file_path.to_str().unwrap().to_string(),
+            append_newline: Some(false),
+            append: Some(false),
+        };
+
+        let output = FileOutput::new(&config).unwrap();
+        output.connect().await.unwrap();
+        output
+            .write(&MessageBatch::from_string("no_newline"))
+            .await
+            .unwrap();
+        output.close().await.unwrap();
+
+        let content = read_to_string(&file_path).await.unwrap();
+        assert_eq!(content, "no_newline");
+    }
+
+    /// Test error handling for invalid directory
+    #[tokio::test]
+    async fn test_invalid_directory() {
+        let config = FileOutputConfig {
+            path: "/invalid/path/test.txt".to_string(),
+            append_newline: Some(true),
+            append: Some(false),
+        };
+
+        let output = FileOutput::new(&config).unwrap();
+        let result = output.connect().await;
+        assert!(matches!(result, Err(Error::Io(_))));
+    }
+}

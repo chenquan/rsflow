@@ -16,7 +16,7 @@ use tracing::info;
 pub struct MqttOutputConfig {
     /// MQTT broker address
     pub host: String,
-    /// MQTT proxy port
+    /// MQTT broker port
     pub port: u16,
     /// Client ID
     pub client_id: String,
@@ -28,11 +28,11 @@ pub struct MqttOutputConfig {
     pub topic: String,
     /// Quality of Service (0, 1, 2)
     pub qos: Option<u8>,
-    /// Whether to clear the session
+    /// Whether to use clean session
     pub clean_session: Option<bool>,
-    /// Stay-at-a-time interval (seconds)
+    /// Keep alive interval (seconds)
     pub keep_alive: Option<u64>,
-    /// Whether to keep the message
+    /// Whether to retain the message
     pub retain: Option<bool>,
 }
 

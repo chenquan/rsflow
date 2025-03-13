@@ -80,10 +80,10 @@ impl Output for HttpOutput {
                 .map_err(|_| Error::Processing("Unable to serialize message".to_string()))?;
         }
 
-        // 构建请求
+        // Build the request
         let mut request_builder = match self.config.method.to_uppercase().as_str() {
             "GET" => client.get(&self.config.url),
-            "POST" => client.post(&self.config.url).body(body),
+            "POST" => client.post(&self.config.url).body(body), // Content-Type由统一逻辑添加
             "PUT" => client.put(&self.config.url).body(body),
             "DELETE" => client.delete(&self.config.url),
             "PATCH" => client.patch(&self.config.url).body(body),
@@ -95,20 +95,20 @@ impl Output for HttpOutput {
             }
         };
 
-        // 添加请求头
+        // Add request headers
         if let Some(headers) = &self.config.headers {
             for (key, value) in headers {
                 request_builder = request_builder.header(key, value);
             }
         }
 
-        // 添加内容类型头（如果没有指定）
-        if self
-            .config
-            .headers
-            .as_ref()
-            .map_or(true, |h| !h.contains_key("Content-Type"))
-        {
+        // Add content type header (if not specified)
+        // 始终添加Content-Type头（如果未指定）
+        if let Some(headers) = &self.config.headers {
+            if !headers.contains_key("Content-Type") {
+                request_builder = request_builder.header(header::CONTENT_TYPE, "application/json");
+            }
+        } else {
             request_builder = request_builder.header(header::CONTENT_TYPE, "application/json");
         }
 
@@ -158,3 +158,4 @@ impl Output for HttpOutput {
         Ok(())
     }
 }
+ 

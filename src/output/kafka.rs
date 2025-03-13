@@ -122,10 +122,10 @@ impl Output for KafkaOutput {
             }
             Content::Binary(v) => {
                 for x in v {
-                    // 创建记录
+                    // Create record
                     let mut record = FutureRecord::to(&self.config.topic).payload(&x);
 
-                    // 如果有分区键，则设置
+                    // Set partition key if available
                     if let Some(key) = &self.config.key {
                         record = record.key(key);
                     }

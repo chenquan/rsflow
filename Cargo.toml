@@ -33,6 +33,7 @@ datafusion = "46"
 arrow-json = "54"
 prost-reflect = "0.14.7"
 prost-types = "0.13.5"
+protobuf-parse = "3.7.2"
 protobuf = "3.7.2"
 
 

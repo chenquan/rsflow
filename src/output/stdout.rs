@@ -56,7 +56,7 @@ impl StdoutOutput {
     async fn arrow_stdout(&self, message_batch: &RecordBatch) -> Result<(), Error> {
         let mut writer_std = self.writer.lock().await;
 
-        // 使用Arrow的JSON序列化功能
+        // Use Arrow's JSON serialization functionality
         let mut buf = Vec::new();
         let mut writer = arrow::json::ArrayWriter::new(&mut buf);
         writer

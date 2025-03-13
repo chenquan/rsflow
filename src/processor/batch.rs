@@ -139,3 +139,117 @@ impl Processor for BatchProcessor {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::time::sleep;
+
+    // Helper function to create test configuration
+    fn create_test_config(count: usize, timeout_ms: u64, data_type: &str) -> BatchProcessorConfig {
+        BatchProcessorConfig {
+            count,
+            timeout_ms,
+            data_type: data_type.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_size_control() -> Result<(), Error> {
+        // Test batch size control with binary data
+        let config = create_test_config(2, 1000, "binary");
+        let processor = BatchProcessor::new(&config)?;
+
+        // Process first message
+        let msg1 = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
+        let result1 = processor.process(msg1).await?;
+        assert!(result1.is_empty(), "First message should not trigger flush");
+
+        // Process second message - should trigger flush due to batch size
+        let msg2 = MessageBatch::new_binary(vec![vec![4u8, 5u8, 6u8]]); // 使用u8类型
+        let result2 = processor.process(msg2).await?;
+
+        assert_eq!(result2.len(), 1, "Should return one combined batch");
+        if let Content::Binary(data) = &result2[0].content {
+            assert_eq!(
+                data,
+                &vec![vec![1u8, 2u8, 3u8], vec![4u8, 5u8, 6u8]],
+                "Combined binary data should match"
+            );
+        } else {
+            panic!("Expected binary content");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_timeout_flush() -> Result<(), Error> {
+        // Test timeout-based flush with short timeout
+        let config = create_test_config(5, 100, "binary");
+        let processor = BatchProcessor::new(&config)?;
+
+        // Process one message and wait for timeout
+        let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
+        let result1 = processor.process(msg).await?;
+        assert!(result1.is_empty(), "First message should not trigger flush");
+
+        // Wait for timeout
+        sleep(Duration::from_millis(150)).await;
+
+        // Process another message - should trigger flush due to timeout
+        let msg2 = MessageBatch::new_binary(vec![vec![4u8, 5u8, 6u8]]); // 使用u8类型
+        let result2 = processor.process(msg2).await?;
+
+        assert_eq!(result2.len(), 1, "Should return one combined batch");
+        if let Content::Binary(data) = &result2[0].content {
+            assert_eq!(
+                data,
+                &vec![vec![1u8, 2u8, 3u8], vec![4u8, 5u8, 6u8]],
+                "Timeout flush should contain both messages"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_invalid_data_type() -> Result<(), Error> {
+        // Test error handling for mismatched data types
+        let config = create_test_config(2, 1000, "arrow");
+        let processor = BatchProcessor::new(&config)?;
+
+        // Try to process binary message with arrow configuration
+        let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
+        let result = processor.process(msg).await;
+
+        assert!(result.is_err(), "Should return error for invalid data type");
+        assert!(
+            matches!(result, Err(Error::Processing(_))),
+            "Should be processing error"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_close() -> Result<(), Error> {
+        // Test processor cleanup
+        let config = create_test_config(2, 1000, "binary");
+        let processor = BatchProcessor::new(&config)?;
+
+        // Add a message to the batch
+        let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
+        processor.process(msg).await?;
+
+        // Close the processor
+        processor.close().await?;
+
+        // Verify batch is cleared
+        let batch = processor.batch.read().await;
+        assert!(batch.is_empty(), "Batch should be empty after close");
+
+        Ok(())
+    }
+}

@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::{Error, MessageBatch};
 
@@ -18,6 +18,7 @@ pub mod mqtt;
 pub mod stdout;
 lazy_static::lazy_static! {
     static ref OUTPUT_BUILDERS: RwLock<HashMap<String, Arc<dyn OutputBuilder>>> = RwLock::new(HashMap::new());
+    static ref INITIALIZED: OnceLock<()> = OnceLock::new();
 }
 /// Feature interface of the output component
 #[async_trait]
@@ -75,10 +76,12 @@ pub fn get_registered_output_types() -> Vec<String> {
 }
 
 pub fn init() {
-    drop::init();
-    file::init();
-    http::init();
-    kafka::init();
-    mqtt::init();
-    stdout::init();
+    INITIALIZED.get_or_init(|| {
+        drop::init();
+        file::init();
+        http::init();
+        kafka::init();
+        mqtt::init();
+        stdout::init();
+    });
 }

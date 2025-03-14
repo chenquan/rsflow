@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::{Error, MessageBatch};
 
@@ -17,6 +17,7 @@ mod udf;
 
 lazy_static::lazy_static! {
     static ref PROCESSOR_BUILDERS: RwLock<HashMap<String, Arc<dyn ProcessorBuilder>>> = RwLock::new(HashMap::new());
+    static ref INITIALIZED: OnceLock<()> = OnceLock::new();
 }
 
 /// Characteristic interface of the processor component
@@ -72,8 +73,10 @@ pub fn get_registered_processor_types() -> Vec<String> {
 }
 
 pub fn init() {
-    batch::init();
-    json::init();
-    protobuf::init();
-    sql::init();
+    INITIALIZED.get_or_init(|| {
+        batch::init();
+        json::init();
+        protobuf::init();
+        sql::init();
+    });
 }

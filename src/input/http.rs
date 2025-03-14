@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::input::{Ack, NoopAck};
+use crate::input::{register_input_builder, Ack, InputBuilder, NoopAck};
 use crate::{input::Input, Error, MessageBatch};
 
 /// HTTP input configuration
@@ -36,9 +36,9 @@ pub struct HttpInput {
 type AppState = Arc<Mutex<VecDeque<MessageBatch>>>;
 
 impl HttpInput {
-    pub fn new(config: &HttpInputConfig) -> Result<Self, Error> {
+    pub fn new(config: HttpInputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             queue: Arc::new(Mutex::new(VecDeque::new())),
             server_handle: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
@@ -126,6 +126,18 @@ impl Input for HttpInput {
     }
 }
 
+pub(crate) struct HttpInputBuilder;
+impl InputBuilder for HttpInputBuilder {
+    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error> {
+        let config: HttpInputConfig = serde_json::from_value(config.clone())?;
+        Ok(Arc::new(HttpInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("http", Arc::new(HttpInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,7 +151,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config);
+        let input = HttpInput::new(config);
         assert!(input.is_ok());
     }
 
@@ -150,7 +162,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config).unwrap();
+        let input = HttpInput::new(config).unwrap();
         let result = input.connect().await;
         assert!(result.is_ok());
 
@@ -169,7 +181,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config).unwrap();
+        let input = HttpInput::new(config).unwrap();
         let result = input.read().await;
         assert!(result.is_err());
         match result {
@@ -185,7 +197,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config).unwrap();
+        let input = HttpInput::new(config).unwrap();
         assert!(input.connect().await.is_ok());
 
         // Queue is empty, should return Processing error
@@ -207,7 +219,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config).unwrap();
+        let input = HttpInput::new(config).unwrap();
         let result = input.connect().await;
         assert!(result.is_err());
         match result {
@@ -230,7 +242,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(&config).unwrap();
+        let input = HttpInput::new(config).unwrap();
         assert!(input.connect().await.is_ok());
 
         // Wait for server to start
@@ -247,7 +259,11 @@ mod tests {
             .send()
             .await;
 
-        assert!(response.is_ok(), "HTTP request failed: {:?}", response.err());
+        assert!(
+            response.is_ok(),
+            "HTTP request failed: {:?}",
+            response.err()
+        );
         let response = response.unwrap();
         assert!(
             response.status().is_success(),
@@ -257,7 +273,11 @@ mod tests {
 
         // Verify message was received correctly
         let read_result = input.read().await;
-        assert!(read_result.is_ok(), "Failed to read message: {:?}", read_result.err());
+        assert!(
+            read_result.is_ok(),
+            "Failed to read message: {:?}",
+            read_result.err()
+        );
 
         let (msg, ack) = read_result.unwrap();
         let content = msg.as_string().unwrap();

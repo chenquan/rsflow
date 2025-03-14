@@ -2,7 +2,7 @@
 //!
 //! Receive data from a Kafka topic
 
-use crate::input::{Ack, Input};
+use crate::input::{register_input_builder, Ack, Input, InputBuilder};
 use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use rdkafka::config::ClientConfig;
@@ -35,9 +35,9 @@ pub struct KafkaInput {
 
 impl KafkaInput {
     /// Create a new Kafka input component
-    pub fn new(config: &KafkaInputConfig) -> Result<Self, Error> {
+    pub fn new(config: KafkaInputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             consumer: Arc::new(RwLock::new(None)),
         })
     }
@@ -162,6 +162,18 @@ impl Ack for KafkaAck {
     }
 }
 
+pub(crate) struct KafkaInputBuilder;
+impl InputBuilder for KafkaInputBuilder {
+    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error> {
+        let config: KafkaInputConfig = serde_json::from_value(config.clone())?;
+        Ok(Arc::new(KafkaInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("kafka", Arc::new(KafkaInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,7 +189,7 @@ mod tests {
             start_from_latest: false,
         };
 
-        let input = KafkaInput::new(&config);
+        let input = KafkaInput::new(config);
         assert!(input.is_ok());
         let input = input.unwrap();
         assert_eq!(input.config.brokers, vec!["localhost:9092".to_string()]);
@@ -197,7 +209,7 @@ mod tests {
             start_from_latest: true,
         };
 
-        let input = KafkaInput::new(&config).unwrap();
+        let input = KafkaInput::new(config).unwrap();
         // Try to read in unconnected state, should return error
         let result = input.read().await;
         assert!(result.is_err());
@@ -219,7 +231,7 @@ mod tests {
             start_from_latest: true,
         };
 
-        let input = KafkaInput::new(&config).unwrap();
+        let input = KafkaInput::new(config).unwrap();
         let ack = KafkaAck {
             consumer: input.consumer.clone(),
             topic: "test-topic".to_string(),

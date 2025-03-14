@@ -2,11 +2,11 @@
 //!
 //! The input component is responsible for receiving data from various sources such as message queues, file systems, HTTP endpoints, and so on.
 
+use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
-use crate::{Error, MessageBatch};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 pub mod file;
 mod generate;
@@ -14,7 +14,15 @@ pub mod http;
 pub mod kafka;
 pub mod memory;
 pub mod mqtt;
-mod sql;
+pub mod sql;
+
+lazy_static::lazy_static! {
+    static ref INPUT_BUILDERS: RwLock<HashMap<String, Arc<dyn InputBuilder>>> = RwLock::new(HashMap::new());
+}
+
+pub trait InputBuilder: Send + Sync {
+    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error>;
+}
 
 #[async_trait]
 pub trait Ack: Send + Sync {
@@ -42,39 +50,51 @@ impl Ack for NoopAck {
 
 /// Input configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum InputConfig {
-    File(file::FileInputConfig),
-    Http(http::HttpInputConfig),
-    Kafka(kafka::KafkaInputConfig),
-    Generate(generate::GenerateConfig),
-    Memory(memory::MemoryInputConfig),
-    Mqtt(mqtt::MqttInputConfig),
-    Sql(sql::SqlConfig),
+pub struct InputConfig {
+    #[serde(rename = "type")]
+    pub input_type: String,
+    #[serde(flatten)]
+    pub config: serde_json::Value,
 }
-
 impl InputConfig {
-    /// Build the input components according to the configuration
+    /// Building input components
     pub fn build(&self) -> Result<Arc<dyn Input>, Error> {
-        match self {
-            InputConfig::File(config) => Ok(Arc::new(file::FileInput::new(config)?)),
-            InputConfig::Http(config) => Ok(Arc::new(http::HttpInput::new(config)?)),
-            InputConfig::Kafka(config) => Ok(Arc::new(kafka::KafkaInput::new(config)?)),
-            InputConfig::Memory(config) => Ok(Arc::new(memory::MemoryInput::new(config)?)),
-            InputConfig::Mqtt(config) => Ok(Arc::new(mqtt::MqttInput::new(config)?)),
-            InputConfig::Generate(config) => {
-                Ok(Arc::new(generate::GenerateInput::new(config.clone())?))
-            }
-            InputConfig::Sql(config) => Ok(Arc::new(sql::SqlInput::new(config)?)),
+        let builders = INPUT_BUILDERS.read().unwrap();
+
+        if let Some(builder) = builders.get(&self.input_type) {
+            builder.build(&self.config)
+        } else {
+            Err(Error::Config(format!(
+                "Unknown input type: {}",
+                self.input_type
+            )))
         }
     }
 }
 
- 
+pub fn register_input_builder(type_name: &str, builder: Arc<dyn InputBuilder>) {
+    let mut builders = INPUT_BUILDERS.write().unwrap();
+    builders.insert(type_name.to_string(), builder);
+}
+
+pub fn get_registered_input_types() -> Vec<String> {
+    let builders = INPUT_BUILDERS.read().unwrap();
+    builders.keys().cloned().collect()
+}
+
+pub fn init() {
+    file::init();
+    generate::init();
+    http::init();
+    kafka::init();
+    memory::init();
+    mqtt::init();
+    sql::init();
+}
+
 #[cfg(test)]
 mod tests {
     use crate::input::*;
-    use std::time::Duration;
 
     #[tokio::test]
     async fn test_noop_ack() {
@@ -95,18 +115,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_input_config() {
-        let config = InputConfig::Generate(serde_json::from_str::<generate::GenerateConfig>(r#"{
+        let config = InputConfig::Generate(
+            serde_json::from_str::<generate::GenerateInputConfig>(
+                r#"{
             "context": "test message",
             "interval": "10ms",
             "count": 5,
             "batch_size": 2
-        }"#).unwrap());
+        }"#,
+            )
+            .unwrap(),
+        );
         let input = InputConfig::build(&config).unwrap();
         // Verify that the generate input component can connect correctly
         assert!(input.connect().await.is_ok());
         // Read message and verify
         let (batch, ack) = input.read().await.unwrap();
-        assert_eq!(batch.as_string().unwrap(), vec!["test message", "test message"]);
+        assert_eq!(
+            batch.as_string().unwrap(),
+            vec!["test message", "test message"]
+        );
         ack.ack().await;
         // Close connection
         assert!(input.close().await.is_ok());
@@ -137,10 +165,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_sql_input_config() {
-        let config = InputConfig::Sql(serde_json::from_str::<sql::SqlConfig>(r#"{
+        let config = InputConfig::Sql(
+            serde_json::from_str::<sql::SqlInputConfig>(
+                r#"{
             "select_sql": "SELECT 1 as id, 'test' as name",
             "create_table_sql": "CREATE TABLE test (id INT, name VARCHAR)"
-        }"#).unwrap());
+        }"#,
+            )
+            .unwrap(),
+        );
         let input = InputConfig::build(&config).unwrap();
         // Verify that the SQL input component can connect correctly
         assert!(input.connect().await.is_ok());
@@ -187,7 +220,7 @@ mod tests {
         let input = InputConfig::build(&config);
         assert!(input.is_ok()); // Address validity is not checked during construction
     }
-    
+
     #[tokio::test]
     async fn test_mqtt_input_config() {
         let config = InputConfig::Mqtt(mqtt::MqttInputConfig {
@@ -204,7 +237,7 @@ mod tests {
         let input = InputConfig::build(&config);
         assert!(input.is_ok()); // Verify that MQTT configuration can correctly build input component
     }
-    
+
     #[tokio::test]
     async fn test_kafka_input_config() {
         let config = InputConfig::Kafka(kafka::KafkaInputConfig {

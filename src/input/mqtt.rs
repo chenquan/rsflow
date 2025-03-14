@@ -2,7 +2,7 @@
 //!
 //! Receive data from the MQTT broker
 
-use crate::input::Ack;
+use crate::input::{register_input_builder, Ack, InputBuilder};
 use crate::{input::Input, Error, MessageBatch};
 use async_trait::async_trait;
 use flume::{Receiver, Sender};
@@ -51,7 +51,7 @@ enum MqttMsg {
 
 impl MqttInput {
     /// Create a new MQTT input component
-    pub fn new(config: &MqttInputConfig) -> Result<Self, Error> {
+    pub fn new(config: MqttInputConfig) -> Result<Self, Error> {
         let (sender, receiver) = flume::bounded::<MqttMsg>(1000);
         let (close_tx, _) = broadcast::channel(1);
         Ok(Self {
@@ -220,6 +220,18 @@ impl Ack for MqttAck {
     }
 }
 
+pub(crate) struct MqttInputBuilder;
+impl InputBuilder for MqttInputBuilder {
+    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error> {
+        let config: MqttInputConfig = serde_json::from_value(config.clone())?;
+        Ok(Arc::new(MqttInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("mqtt", Arc::new(MqttInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,7 +250,7 @@ mod tests {
             keep_alive: Some(60),
         };
 
-        let input = MqttInput::new(&config);
+        let input = MqttInput::new(config);
         assert!(input.is_ok());
         let input = input.unwrap();
         assert_eq!(input.config.host, "localhost");
@@ -266,7 +278,7 @@ mod tests {
             keep_alive: None,
         };
 
-        let input = MqttInput::new(&config).unwrap();
+        let input = MqttInput::new(config).unwrap();
         // Try to read a message without connection, should return an error
         let result = input.read().await;
         assert!(result.is_err());
@@ -290,7 +302,7 @@ mod tests {
             keep_alive: None,
         };
 
-        let input = MqttInput::new(&config).unwrap();
+        let input = MqttInput::new(config).unwrap();
         // Test closing operation, should succeed even if not connected
         let result = input.close().await;
         assert!(result.is_ok());
@@ -310,8 +322,8 @@ mod tests {
             keep_alive: None,
         };
 
-        let input = MqttInput::new(&config).unwrap();
-        
+        let input = MqttInput::new(config).unwrap();
+
         // Manually send a message to the receive queue
         let test_payload = "test message".as_bytes().to_vec();
         let publish = Publish {
@@ -324,27 +336,28 @@ mod tests {
         };
 
         // Send message to queue
-        input.sender.send_async(MqttMsg::Publish(publish)).await.unwrap();
+        input
+            .sender
+            .send_async(MqttMsg::Publish(publish))
+            .await
+            .unwrap();
 
         // Simulate connection status
-        let client = AsyncClient::new(
-            MqttOptions::new("test-client", "localhost", 1883),
-            10
-        ).0;
+        let client = AsyncClient::new(MqttOptions::new("test-client", "localhost", 1883), 10).0;
         input.client.lock().await.replace(client);
 
         // Read message and verify
         let result = input.read().await;
         assert!(result.is_ok());
         let (msg, ack) = result.unwrap();
-        
+
         // Verify message content
         let content = msg.as_string().unwrap();
         assert_eq!(content, vec!["test message"]);
-        
+
         // Test message acknowledgment
         ack.ack().await;
-        
+
         // Close connection
         assert!(input.close().await.is_ok());
     }
@@ -363,18 +376,19 @@ mod tests {
             keep_alive: None,
         };
 
-        let input = MqttInput::new(&config).unwrap();
-        
+        let input = MqttInput::new(config).unwrap();
+
         // Simulate connection status
-        let client = AsyncClient::new(
-            MqttOptions::new("test-client", "localhost", 1883),
-            10
-        ).0;
+        let client = AsyncClient::new(MqttOptions::new("test-client", "localhost", 1883), 10).0;
         input.client.lock().await.replace(client);
-        
+
         // Send error message to queue
-        input.sender.send_async(MqttMsg::Err(Error::Disconnection)).await.unwrap();
-        
+        input
+            .sender
+            .send_async(MqttMsg::Err(Error::Disconnection))
+            .await
+            .unwrap();
+
         // Read message and verify error handling
         let result = input.read().await;
         assert!(result.is_err());
@@ -382,7 +396,7 @@ mod tests {
             Err(Error::Disconnection) => {}
             _ => panic!("Expected Disconnection error"),
         }
-        
+
         // Close connection
         assert!(input.close().await.is_ok());
     }

@@ -1,4 +1,4 @@
-use crate::input::{Ack, Input, NoopAck};
+use crate::input::{register_input_builder, Ack, Input, InputBuilder, NoopAck};
 use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GenerateConfig {
+pub struct GenerateInputConfig {
     context: String,
     #[serde(deserialize_with = "deserialize_duration")]
     interval: Duration,
@@ -16,12 +16,12 @@ pub struct GenerateConfig {
 }
 
 pub struct GenerateInput {
-    config: GenerateConfig,
+    config: GenerateInputConfig,
     count: AtomicI64,
     batch_size: usize,
 }
 impl GenerateInput {
-    pub fn new(config: GenerateConfig) -> Result<Self, Error> {
+    pub fn new(config: GenerateInputConfig) -> Result<Self, Error> {
         let batch_size = config.batch_size.unwrap_or(1);
 
         Ok(Self {
@@ -75,17 +75,29 @@ where
     humantime::parse_duration(&s).map_err(serde::de::Error::custom)
 }
 
+pub(crate) struct GenerateInputBuilder;
+impl InputBuilder for GenerateInputBuilder {
+    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error> {
+        let config: GenerateInputConfig = serde_json::from_value(config.clone())?;
+        Ok(Arc::new(GenerateInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("generate", Arc::new(GenerateInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::{generate::GenerateConfig, generate::GenerateInput, Input};
+    use crate::input::{generate::GenerateInput, generate::GenerateInputConfig, Input};
     use crate::Error;
     use std::time::Duration;
 
     #[tokio::test]
     async fn test_generate_input_new() {
         // Test creating GenerateInput instance
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(5),
@@ -98,7 +110,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_default_batch_size() {
         // Test default batch size
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(5),
@@ -111,7 +123,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_connect() {
         // Test connection method
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(5),
@@ -124,7 +136,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_read() {
         // Test reading messages
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(5),
@@ -155,7 +167,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_without_count_limit() {
         // Test the case without message count limit
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: None, // No limit
@@ -177,7 +189,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_close() {
         // Test closing connection
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(5),
@@ -190,7 +202,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_input_exact_count() {
         // Test exact count limit
-        let config = GenerateConfig {
+        let config = GenerateInputConfig {
             context: "test message".to_string(),
             interval: Duration::from_millis(10),
             count: Some(4),
@@ -221,7 +233,7 @@ mod tests {
             "batch_size": 2
         }"#;
 
-        let config: GenerateConfig = serde_json::from_str(json).unwrap();
+        let config: GenerateInputConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.context, "test message");
         assert_eq!(config.interval, Duration::from_millis(10));
         assert_eq!(config.count, Some(5));

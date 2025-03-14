@@ -83,7 +83,8 @@ impl InputBuilder for GenerateInputBuilder {
                 "Generate input configuration is missing".to_string(),
             ));
         }
-        let config: GenerateInputConfig = serde_json::from_value(config.clone().unwrap())?;
+        let config: GenerateInputConfig =
+            serde_json::from_value::<GenerateInputConfig>(config.clone().unwrap())?;
         Ok(Arc::new(GenerateInput::new(config)?))
     }
 }

@@ -6,7 +6,8 @@ use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub mod file;
 mod generate;
@@ -18,6 +19,7 @@ pub mod sql;
 
 lazy_static::lazy_static! {
     static ref INPUT_BUILDERS: RwLock<HashMap<String, Arc<dyn InputBuilder>>> = RwLock::new(HashMap::new());
+    static ref INITIALIZED: OnceLock<()> = OnceLock::new();
 }
 
 pub trait InputBuilder: Send + Sync {
@@ -87,13 +89,15 @@ pub fn get_registered_input_types() -> Vec<String> {
 }
 
 pub fn init() {
-    file::init();
-    generate::init();
-    http::init();
-    kafka::init();
-    memory::init();
-    mqtt::init();
-    sql::init();
+    INITIALIZED.get_or_init(|| {
+        file::init();
+        generate::init();
+        http::init();
+        kafka::init();
+        memory::init();
+        mqtt::init();
+        sql::init();
+    });
 }
 
 #[cfg(test)]
@@ -105,9 +109,11 @@ mod tests {
         NoopAck::ack(&NoopAck).await;
     }
 
+
     #[tokio::test]
     async fn test_file_input_config() {
         init();
+
         let config = file::FileInputConfig {
             path: "test.txt".to_string(),
             close_on_eof: Some(true),
@@ -126,19 +132,17 @@ mod tests {
     async fn test_generate_input_config() {
         init();
 
-        let config = serde_json::from_str::<generate::GenerateInputConfig>(
-            r#"{
-            "context": "test message",
-            "interval": "10ms",
-            "count": 5,
-            "batch_size": 2
-        }"#,
+        let input_config = serde_yaml::from_str::<InputConfig>(
+            r#"
+"type": "generate"
+"context": "test message"
+"interval": "10ms"
+"count": 5
+"batch_size": 2
+            "#,
         )
         .unwrap();
-        let input_config = InputConfig {
-            input_type: "generate".to_string(),
-            config: Some(serde_json::to_value(config).unwrap()),
-        };
+
         let input = InputConfig::build(&input_config).unwrap();
         // Verify that the generate input component can connect correctly
         assert!(input.connect().await.is_ok());

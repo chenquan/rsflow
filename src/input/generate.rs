@@ -95,7 +95,6 @@ pub fn init() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::input::{generate::GenerateInput, generate::GenerateInputConfig, Input};
     use crate::Error;
     use std::time::Duration;

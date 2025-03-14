@@ -42,7 +42,6 @@ pub fn init() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::output::drop::DropOutput;
     use crate::output::Output;
     use crate::MessageBatch;

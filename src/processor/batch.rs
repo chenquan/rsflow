@@ -2,6 +2,7 @@
 //!
 //! Batch multiple messages into one or more messages
 
+use crate::processor::{register_processor_builder, ProcessorBuilder};
 use crate::{processor::Processor, Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -29,7 +30,7 @@ pub struct BatchProcessor {
 
 impl BatchProcessor {
     /// Create a new batch processor component
-    pub fn new(config: &BatchProcessorConfig) -> Result<Self, Error> {
+    pub fn new(config: BatchProcessorConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
             batch: Arc::new(RwLock::new(Vec::with_capacity(config.count))),
@@ -138,4 +139,21 @@ impl Processor for BatchProcessor {
         batch.clear();
         Ok(())
     }
+}
+
+pub(crate) struct BatchProcessorBuilder;
+impl ProcessorBuilder for BatchProcessorBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Batch processor configuration is missing".to_string(),
+            ));
+        }
+        let config: BatchProcessorConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(BatchProcessor::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("batch", Arc::new(BatchProcessorBuilder));
 }

@@ -6,7 +6,6 @@ use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock, RwLock};
 
 pub mod file;
@@ -108,7 +107,6 @@ mod tests {
     async fn test_noop_ack() {
         NoopAck::ack(&NoopAck).await;
     }
-
 
     #[tokio::test]
     async fn test_file_input_config() {

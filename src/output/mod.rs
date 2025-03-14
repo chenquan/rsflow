@@ -15,6 +15,7 @@ pub mod kafka;
 pub mod mqtt;
 
 pub mod stdout;
+mod sql;
 
 /// Feature interface of the output component
 #[async_trait]

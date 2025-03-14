@@ -24,4 +24,4 @@ streams:
 
 
     output:
-      type: "drop"
+      type: "stdout"

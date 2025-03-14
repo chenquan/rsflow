@@ -34,7 +34,6 @@ pub trait Output: Send + Sync {
 
 /// Output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
 pub struct OutputConfig {
     #[serde(rename = "type")]
     pub output_type: String,
@@ -80,4 +79,6 @@ pub fn init() {
     file::init();
     http::init();
     kafka::init();
+    mqtt::init();
+    stdout::init();
 }

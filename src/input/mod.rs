@@ -21,7 +21,7 @@ lazy_static::lazy_static! {
 }
 
 pub trait InputBuilder: Send + Sync {
-    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error>;
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Input>, Error>;
 }
 
 #[async_trait]
@@ -54,8 +54,9 @@ pub struct InputConfig {
     #[serde(rename = "type")]
     pub input_type: String,
     #[serde(flatten)]
-    pub config: serde_json::Value,
+    pub config: Option<serde_json::Value>,
 }
+
 impl InputConfig {
     /// Building input components
     pub fn build(&self) -> Result<Arc<dyn Input>, Error> {
@@ -74,6 +75,9 @@ impl InputConfig {
 
 pub fn register_input_builder(type_name: &str, builder: Arc<dyn InputBuilder>) {
     let mut builders = INPUT_BUILDERS.write().unwrap();
+    if builders.contains_key(type_name) {
+        panic!("Input type already registered: {}", type_name)
+    }
     builders.insert(type_name.to_string(), builder);
 }
 

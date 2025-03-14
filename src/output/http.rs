@@ -2,6 +2,7 @@
 //!
 //! Send the processed data to the HTTP endpoint
 
+use crate::output::{register_output_builder, OutputBuilder};
 use crate::{output::Output, Error, MessageBatch};
 use async_trait::async_trait;
 use reqwest::{header, Client};
@@ -34,9 +35,9 @@ pub struct HttpOutput {
 
 impl HttpOutput {
     /// Create a new HTTP output component
-    pub fn new(config: &HttpOutputConfig) -> Result<Self, Error> {
+    pub fn new(config: HttpOutputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             client: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
         })
@@ -158,4 +159,21 @@ impl Output for HttpOutput {
         Ok(())
     }
 }
- 
+
+pub(crate) struct HttpOutputBuilder;
+impl OutputBuilder for HttpOutputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "HTTP output configuration is missing".to_string(),
+            ));
+        }
+        let config: HttpOutputConfig = serde_json::from_value(config.clone().unwrap())?;
+
+        Ok(Arc::new(HttpOutput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_output_builder("http", Arc::new(HttpOutputBuilder));
+}

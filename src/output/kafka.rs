@@ -4,7 +4,15 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::output::{register_output_builder, OutputBuilder};
+use crate::{output::Output, MessageBatch};
 use crate::{Content, Error};
+use async_trait::async_trait;
+use rdkafka::config::ClientConfig;
+use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -51,20 +59,13 @@ pub struct KafkaOutput {
 
 impl KafkaOutput {
     /// Create a new Kafka output component
-    pub fn new(config: &KafkaOutputConfig) -> Result<Self, Error> {
+    pub fn new(config: KafkaOutputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             producer: Arc::new(RwLock::new(None)),
         })
     }
 }
-use crate::{output::Output, MessageBatch};
-use async_trait::async_trait;
-use rdkafka::config::ClientConfig;
-use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
 
 #[async_trait]
 impl Output for KafkaOutput {
@@ -159,4 +160,22 @@ impl Output for KafkaOutput {
         }
         Ok(())
     }
+}
+
+pub(crate) struct KafkaOutputBuilder;
+impl OutputBuilder for KafkaOutputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "HTTP output configuration is missing".to_string(),
+            ));
+        }
+        let config: KafkaOutputConfig = serde_json::from_value(config.clone().unwrap())?;
+
+        Ok(Arc::new(KafkaOutput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_output_builder("kafka", Arc::new(KafkaOutputBuilder));
 }

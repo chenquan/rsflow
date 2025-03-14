@@ -127,8 +127,14 @@ impl Input for FileInput {
 
 pub(crate) struct FileInputBuilder;
 impl InputBuilder for FileInputBuilder {
-    fn build(&self, config: &serde_json::Value) -> Result<Arc<dyn Input>, Error> {
-        let config: FileInputConfig = serde_json::from_value(config.clone())?;
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Input>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "File input configuration is missing".to_string(),
+            ));
+        }
+
+        let config: FileInputConfig = serde_json::from_value(config.clone().unwrap())?;
         Ok(Arc::new(FileInput::new(config)?))
     }
 }

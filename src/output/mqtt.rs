@@ -2,6 +2,7 @@
 //!
 //! Send the processed data to the MQTT broker
 
+use crate::output::{register_output_builder, OutputBuilder};
 use crate::{output::Output, Error, MessageBatch};
 use async_trait::async_trait;
 use rumqttc::{AsyncClient, MqttOptions, QoS};
@@ -46,9 +47,9 @@ pub struct MqttOutput {
 
 impl MqttOutput {
     /// Create a new MQTT output component
-    pub fn new(config: &MqttOutputConfig) -> Result<Self, Error> {
+    pub fn new(config: MqttOutputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             client: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
             eventloop_handle: Arc::new(Mutex::new(None)),
@@ -166,4 +167,21 @@ impl Output for MqttOutput {
         self.connected.store(false, Ordering::SeqCst);
         Ok(())
     }
+}
+
+pub(crate) struct MqttOutputBuilder;
+impl OutputBuilder for MqttOutputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "HTTP output configuration is missing".to_string(),
+            ));
+        }
+        let config: MqttOutputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(MqttOutput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_output_builder("mqtt", Arc::new(MqttOutputBuilder));
 }

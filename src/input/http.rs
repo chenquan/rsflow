@@ -248,7 +248,7 @@ mod tests {
             path: "/test".to_string(),
             cors_enabled: Some(false),
         };
-        let input = HttpInput::new(config).unwrap();
+        let input = HttpInput::new(config.clone()).unwrap();
         assert!(input.connect().await.is_ok());
 
         // Wait for server to start

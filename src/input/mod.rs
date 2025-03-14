@@ -107,30 +107,39 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_input_config() {
-        let config = InputConfig::File(file::FileInputConfig {
+        init();
+        let config = file::FileInputConfig {
             path: "test.txt".to_string(),
             close_on_eof: Some(true),
             start_from_beginning: Some(false),
-        });
-        let input = InputConfig::build(&config).unwrap();
+        };
+        let input_config = InputConfig {
+            input_type: "file".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config).unwrap();
         // Verify that the built input component can connect and close correctly
         assert!(input.connect().await.is_err()); // File does not exist, should return error
     }
 
     #[tokio::test]
     async fn test_generate_input_config() {
-        let config = InputConfig::Generate(
-            serde_json::from_str::<generate::GenerateInputConfig>(
-                r#"{
+        init();
+
+        let config = serde_json::from_str::<generate::GenerateInputConfig>(
+            r#"{
             "context": "test message",
             "interval": "10ms",
             "count": 5,
             "batch_size": 2
         }"#,
-            )
-            .unwrap(),
-        );
-        let input = InputConfig::build(&config).unwrap();
+        )
+        .unwrap();
+        let input_config = InputConfig {
+            input_type: "generate".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config).unwrap();
         // Verify that the generate input component can connect correctly
         assert!(input.connect().await.is_ok());
         // Read message and verify
@@ -146,11 +155,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_input_config() {
+        init();
+
         let messages = vec!["message1".to_string(), "message2".to_string()];
-        let config = InputConfig::Memory(memory::MemoryInputConfig {
+        let config = memory::MemoryInputConfig {
             messages: Some(messages),
-        });
-        let input = InputConfig::build(&config).unwrap();
+        };
+
+        let input_config = InputConfig {
+            input_type: "memory".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+
+        let input = InputConfig::build(&input_config).unwrap();
         // Verify that the memory input component can connect correctly
         assert!(input.connect().await.is_ok());
         // Read message and verify
@@ -169,16 +186,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_sql_input_config() {
-        let config = InputConfig::Sql(
-            serde_json::from_str::<sql::SqlInputConfig>(
-                r#"{
+        init();
+
+        let config = serde_json::from_str::<sql::SqlInputConfig>(
+            r#"{
             "select_sql": "SELECT 1 as id, 'test' as name",
             "create_table_sql": "CREATE TABLE test (id INT, name VARCHAR)"
         }"#,
-            )
-            .unwrap(),
-        );
-        let input = InputConfig::build(&config).unwrap();
+        )
+        .unwrap();
+
+        let input_config = InputConfig {
+            input_type: "sql".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config).unwrap();
         // Verify that the SQL input component can connect correctly
         assert!(input.connect().await.is_ok());
         // Read message
@@ -192,12 +214,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_input_config() {
-        let config = InputConfig::Http(http::HttpInputConfig {
+        init();
+
+        let config = http::HttpInputConfig {
             address: "127.0.0.1:0".to_string(), // 使用随机端口
             path: "/test".to_string(),
             cors_enabled: Some(false),
-        });
-        let input = InputConfig::build(&config).unwrap();
+        };
+
+        let input_config = InputConfig {
+            input_type: "http".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config).unwrap();
         // Verify that the HTTP input component can connect correctly
         assert!(input.connect().await.is_ok());
         // Close connection
@@ -206,28 +235,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_config_invalid() {
+        init();
+
         // 测试无效的文件路径
-        let config = InputConfig::File(file::FileInputConfig {
+        let config = file::FileInputConfig {
             path: "".to_string(), // 空路径
             close_on_eof: Some(true),
             start_from_beginning: Some(false),
-        });
-        let input = InputConfig::build(&config);
+        };
+
+        let input_config = InputConfig {
+            input_type: "file".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config);
         assert!(input.is_ok()); // Path validity is not checked during construction
 
         // 测试无效的HTTP地址
-        let config = InputConfig::Http(http::HttpInputConfig {
+        let config = http::HttpInputConfig {
             address: "invalid-address".to_string(), // 无效地址
             path: "/test".to_string(),
             cors_enabled: Some(false),
-        });
-        let input = InputConfig::build(&config);
+        };
+        let input_config = InputConfig {
+            input_type: "http".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config);
         assert!(input.is_ok()); // Address validity is not checked during construction
     }
 
     #[tokio::test]
     async fn test_mqtt_input_config() {
-        let config = InputConfig::Mqtt(mqtt::MqttInputConfig {
+        init();
+
+        let config = mqtt::MqttInputConfig {
             host: "localhost".to_string(),
             port: 1883,
             client_id: "test-client".to_string(),
@@ -237,21 +279,32 @@ mod tests {
             qos: Some(1),
             clean_session: Some(true),
             keep_alive: Some(60),
-        });
-        let input = InputConfig::build(&config);
+        };
+
+        let input_config = InputConfig {
+            input_type: "mqtt".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config);
         assert!(input.is_ok()); // Verify that MQTT configuration can correctly build input component
     }
 
     #[tokio::test]
     async fn test_kafka_input_config() {
-        let config = InputConfig::Kafka(kafka::KafkaInputConfig {
+        init();
+
+        let config = kafka::KafkaInputConfig {
             brokers: vec!["localhost:9092".to_string()],
             topics: vec!["test-topic".to_string()],
             consumer_group: "test-group".to_string(),
             client_id: Some("test-client".to_string()),
             start_from_latest: false,
-        });
-        let input = InputConfig::build(&config);
+        };
+        let input_config = InputConfig {
+            input_type: "kafka".to_string(),
+            config: Some(serde_json::to_value(config).unwrap()),
+        };
+        let input = InputConfig::build(&input_config);
         assert!(input.is_ok()); // Verify that Kafka configuration can correctly build input component
     }
 }

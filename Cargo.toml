@@ -42,7 +42,7 @@ toml = "0.8"
 lazy_static = "1.4"
 
 # HTTP客户端/服务器
-axum = "0.6"
+axum = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
 
 

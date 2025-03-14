@@ -2,14 +2,15 @@
 //!
 //! Outputs the processed data to standard output
 
-use std::io::{self, Write};
-use std::string::String;
-
+use crate::output::{register_output_builder, OutputBuilder};
 use crate::{output::Output, Bytes, Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
 use datafusion::arrow::array::RecordBatch;
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
+use std::string::String;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Standard output configuration
@@ -27,9 +28,9 @@ pub struct StdoutOutput {
 
 impl StdoutOutput {
     /// Create a new standard output component
-    pub fn new(config: &StdoutOutputConfig) -> Result<Self, Error> {
+    pub fn new(config: StdoutOutputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             writer: Mutex::new(io::stdout()),
         })
     }
@@ -87,4 +88,21 @@ impl StdoutOutput {
         }
         Ok(())
     }
+}
+
+pub(crate) struct StdoutOutputBuilder;
+impl OutputBuilder for StdoutOutputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Stdout output configuration is missing".to_string(),
+            ));
+        }
+        let config: StdoutOutputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(StdoutOutput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_output_builder("stdout", Arc::new(StdoutOutputBuilder));
 }

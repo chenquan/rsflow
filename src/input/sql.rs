@@ -1,4 +1,4 @@
-use crate::input::{Ack, Input, NoopAck};
+use crate::input::{register_input_builder, Ack, Input, InputBuilder, NoopAck};
 use crate::{Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -10,20 +10,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SqlConfig {
+pub struct SqlInputConfig {
     select_sql: String,
     create_table_sql: String,
 }
 
 pub struct SqlInput {
-    sql_config: SqlConfig,
+    sql_config: SqlInputConfig,
     read: AtomicBool,
 }
 
 impl SqlInput {
-    pub fn new(sql_config: &SqlConfig) -> Result<Self, Error> {
+    pub fn new(sql_config: SqlInputConfig) -> Result<Self, Error> {
         Ok(Self {
-            sql_config: sql_config.clone(),
+            sql_config,
             read: AtomicBool::new(false),
         })
     }
@@ -79,6 +79,23 @@ impl Input for SqlInput {
     }
 }
 
+pub(crate) struct SqlInputBuilder;
+impl InputBuilder for SqlInputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Input>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "SQL input configuration is missing".to_string(),
+            ));
+        }
+
+        let config: SqlInputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(SqlInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("sql", Arc::new(SqlInputBuilder));
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,25 +107,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_sql_input_new() {
-        let config = SqlConfig {
+        let config = SqlInputConfig {
             select_sql: "SELECT * FROM test".to_string(),
             create_table_sql:
                 "CREATE EXTERNAL TABLE test (id INT, name STRING) STORED AS CSV LOCATION 'test.csv'"
                     .to_string(),
         };
-        let input = SqlInput::new(&config);
+        let input = SqlInput::new(config);
         assert!(input.is_ok());
     }
 
     #[tokio::test]
     async fn test_sql_input_connect() {
-        let config = SqlConfig {
+        let config = SqlInputConfig {
             select_sql: "SELECT * FROM test".to_string(),
             create_table_sql:
                 "CREATE EXTERNAL TABLE test (id INT, name STRING) STORED AS CSV LOCATION 'test.csv'"
                     .to_string(),
         };
-        let input = SqlInput::new(&config).unwrap();
+        let input = SqlInput::new(config).unwrap();
         assert!(input.connect().await.is_ok());
     }
 
@@ -122,7 +139,7 @@ mod tests {
         writeln!(file, "1,Alice").unwrap();
         writeln!(file, "2,Bob").unwrap();
 
-        let config = SqlConfig {
+        let config = SqlInputConfig {
             select_sql: "SELECT * FROM test".to_string(),
             create_table_sql: format!(
                 "CREATE EXTERNAL TABLE test (id INT, name STRING) STORED AS CSV LOCATION '{}'",
@@ -130,7 +147,7 @@ mod tests {
             ),
         };
 
-        let input = SqlInput::new(&config)?;
+        let input = SqlInput::new(config)?;
         let (batch, _ack) = input.read().await?;
 
         // 验证返回的数据
@@ -167,26 +184,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_sql_input_invalid_sql() {
-        let config = SqlConfig {
+        let config = SqlInputConfig {
             select_sql: "INVALID SQL".to_string(),
             create_table_sql:
                 "CREATE EXTERNAL TABLE test (id INT, name STRING) STORED AS CSV LOCATION 'test.csv'"
                     .to_string(),
         };
-        let input = SqlInput::new(&config).unwrap();
+        let input = SqlInput::new(config).unwrap();
         let result = input.read().await;
         assert!(matches!(result, Err(Error::Reading(_))));
     }
 
     #[tokio::test]
     async fn test_sql_input_close() {
-        let config = SqlConfig {
+        let config = SqlInputConfig {
             select_sql: "SELECT * FROM test".to_string(),
             create_table_sql:
                 "CREATE EXTERNAL TABLE test (id INT, name STRING) STORED AS CSV LOCATION 'test.csv'"
                     .to_string(),
         };
-        let input = SqlInput::new(&config).unwrap();
+        let input = SqlInput::new(config).unwrap();
         assert!(input.close().await.is_ok());
     }
 }

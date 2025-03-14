@@ -3,9 +3,10 @@
 //! This component discards all messages without performing any operations.
 //! It's useful for testing or when you want to intentionally discard data.
 
-use crate::output::Output;
+use crate::output::{register_output_builder, Output, OutputBuilder};
 use crate::{Error, MessageBatch};
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// Drop output component that discards all messages
 ///
@@ -28,9 +29,19 @@ impl Output for DropOutput {
     }
 }
 
+pub(crate) struct DropOutputBuilder;
+impl OutputBuilder for DropOutputBuilder {
+    fn build(&self, _: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        Ok(Arc::new(DropOutput))
+    }
+}
+
+pub fn init() {
+    register_output_builder("drop", Arc::new(DropOutputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::output::drop::DropOutput;
     use crate::output::Output;
     use crate::MessageBatch;

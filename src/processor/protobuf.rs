@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io};
 
-use crate::processor::Processor;
+use crate::processor::{register_processor_builder, Processor, ProcessorBuilder};
 use crate::{Content, Error, MessageBatch};
 use protobuf::Message as ProtobufMessage;
 
@@ -41,7 +41,7 @@ pub struct ProtobufProcessor {
 
 impl ProtobufProcessor {
     /// Create a new Protobuf format conversion processor
-    pub fn new(config: &ProtobufProcessorConfig) -> Result<Self, Error> {
+    pub fn new(config: ProtobufProcessorConfig) -> Result<Self, Error> {
         // Check the file extension to see if it's a proto file or a binary descriptor file
         let file_descriptor_set = Self::parse_proto_file(&config)?;
 
@@ -66,7 +66,7 @@ impl ProtobufProcessor {
     }
 
     /// Parse and generate a FileDescriptorSet from the .proto file
-    fn parse_proto_file(c: &&ProtobufProcessorConfig) -> Result<FileDescriptorSet, Error> {
+    fn parse_proto_file(c: &ProtobufProcessorConfig) -> Result<FileDescriptorSet, Error> {
         let mut proto_inputs: Vec<String> = vec![];
         for x in &c.proto_inputs {
             let files_in_dir_result = list_files_in_dir(x)
@@ -353,4 +353,21 @@ fn list_files_in_dir<P: AsRef<Path>>(dir: P) -> io::Result<Vec<String>> {
         }
     }
     Ok(files)
+}
+
+pub(crate) struct ProtobufProcessorBuilder;
+impl ProcessorBuilder for ProtobufProcessorBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Batch processor configuration is missing".to_string(),
+            ));
+        }
+        let config: ProtobufProcessorConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(ProtobufProcessor::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("protobuf", Arc::new(ProtobufProcessorBuilder));
 }

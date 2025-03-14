@@ -4,7 +4,8 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::{Error, MessageBatch};
 
@@ -15,7 +16,10 @@ pub mod kafka;
 pub mod mqtt;
 
 pub mod stdout;
-
+lazy_static::lazy_static! {
+    static ref OUTPUT_BUILDERS: RwLock<HashMap<String, Arc<dyn OutputBuilder>>> = RwLock::new(HashMap::new());
+    static ref INITIALIZED: OnceLock<()> = OnceLock::new();
+}
 /// Feature interface of the output component
 #[async_trait]
 pub trait Output: Send + Sync {
@@ -31,26 +35,53 @@ pub trait Output: Send + Sync {
 
 /// Output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum OutputConfig {
-    File(file::FileOutputConfig),
-    Http(http::HttpOutputConfig),
-    Kafka(kafka::KafkaOutputConfig),
-    Mqtt(mqtt::MqttOutputConfig),
-    Stdout(stdout::StdoutOutputConfig),
-    Drop,
+pub struct OutputConfig {
+    #[serde(rename = "type")]
+    pub output_type: String,
+    #[serde(flatten)]
+    pub config: Option<serde_json::Value>,
 }
 
 impl OutputConfig {
     /// Build the output component according to the configuration
     pub fn build(&self) -> Result<Arc<dyn Output>, Error> {
-        match self {
-            OutputConfig::File(config) => Ok(Arc::new(file::FileOutput::new(config)?)),
-            OutputConfig::Http(config) => Ok(Arc::new(http::HttpOutput::new(config)?)),
-            OutputConfig::Kafka(config) => Ok(Arc::new(kafka::KafkaOutput::new(config)?)),
-            OutputConfig::Mqtt(config) => Ok(Arc::new(mqtt::MqttOutput::new(config)?)),
-            OutputConfig::Stdout(config) => Ok(Arc::new(stdout::StdoutOutput::new(config)?)),
-            OutputConfig::Drop => Ok(Arc::new(drop::DropOutput)),
+        let builders = OUTPUT_BUILDERS.read().unwrap();
+
+        if let Some(builder) = builders.get(&self.output_type) {
+            builder.build(&self.config)
+        } else {
+            Err(Error::Config(format!(
+                "Unknown output type: {}",
+                self.output_type
+            )))
         }
     }
+}
+
+pub trait OutputBuilder: Send + Sync {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error>;
+}
+
+pub fn register_output_builder(type_name: &str, builder: Arc<dyn OutputBuilder>) {
+    let mut builders = OUTPUT_BUILDERS.write().unwrap();
+    if builders.contains_key(type_name) {
+        panic!("Output type already registered: {}", type_name);
+    }
+    builders.insert(type_name.to_string(), builder);
+}
+
+pub fn get_registered_output_types() -> Vec<String> {
+    let builders = OUTPUT_BUILDERS.read().unwrap();
+    builders.keys().cloned().collect()
+}
+
+pub fn init() {
+    INITIALIZED.get_or_init(|| {
+        drop::init();
+        file::init();
+        http::init();
+        kafka::init();
+        mqtt::init();
+        stdout::init();
+    });
 }

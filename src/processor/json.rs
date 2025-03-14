@@ -2,7 +2,7 @@
 //!
 //! A processor for converting between binary data and the Arrow format
 
-use crate::processor::Processor;
+use crate::processor::{register_processor_builder, Processor, ProcessorBuilder};
 use crate::{Bytes, Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -153,4 +153,22 @@ fn arrow_to_json(batch: &RecordBatch) -> Result<Vec<u8>, Error> {
         .map_err(|e| Error::Processing(format!("Arrow JSON序列化完成错误: {}", e)))?;
 
     Ok(buf)
+}
+
+pub(crate) struct JsonToArrowProcessorBuilder;
+impl ProcessorBuilder for JsonToArrowProcessorBuilder {
+    fn build(&self, _: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        Ok(Arc::new(JsonToArrowProcessor))
+    }
+}
+pub(crate) struct ArrowToJsonProcessorBuilder;
+impl ProcessorBuilder for ArrowToJsonProcessorBuilder {
+    fn build(&self, _: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        Ok(Arc::new(ArrowToJsonProcessor))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("arrow_to_json", Arc::new(ArrowToJsonProcessorBuilder));
+    register_processor_builder("json_to_arrow", Arc::new(JsonToArrowProcessorBuilder));
 }

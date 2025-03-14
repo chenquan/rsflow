@@ -2,7 +2,7 @@
 //!
 //! DataFusion is used to process data with SQL queries.
 
-use crate::processor::Processor;
+use crate::processor::{register_processor_builder, Processor, ProcessorBuilder};
 use crate::{Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -30,10 +30,8 @@ pub struct SqlProcessor {
 
 impl SqlProcessor {
     /// Create a new SQL processor component.
-    pub fn new(config: &SqlProcessorConfig) -> Result<Self, Error> {
-        Ok(Self {
-            config: config.clone(),
-        })
+    pub fn new(config: SqlProcessorConfig) -> Result<Self, Error> {
+        Ok(Self { config })
     }
 
     /// Execute SQL query
@@ -102,4 +100,21 @@ impl Processor for SqlProcessor {
     async fn close(&self) -> Result<(), Error> {
         Ok(())
     }
+}
+
+pub(crate) struct SqlProcessorBuilder;
+impl ProcessorBuilder for SqlProcessorBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Batch processor configuration is missing".to_string(),
+            ));
+        }
+        let config: SqlProcessorConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(SqlProcessor::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("sql", Arc::new(SqlProcessorBuilder));
 }

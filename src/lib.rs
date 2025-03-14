@@ -1,7 +1,7 @@
 //! Rust stream processing engine
 
 use datafusion::arrow::record_batch::RecordBatch;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use thiserror::Error;
 
 pub mod config;

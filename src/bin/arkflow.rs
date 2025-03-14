@@ -10,9 +10,14 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use arkflow::config::EngineConfig;
+use arkflow::{input, output, processor};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    input::init();
+    output::init();
+    processor::init();
+
     let matches = Command::new("arkflow")
         .version("0.1.0")
         .author("chenquan")

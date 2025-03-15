@@ -506,7 +506,7 @@ message TestMessage {
         };
 
         // Test processor creation
-        let processor = ProtobufProcessor::new(&config);
+        let processor = ProtobufProcessor::new(config);
         assert!(processor.is_ok(), "Failed to create ProtobufProcessor: {:?}", processor.err());
 
         // Clean up is handled automatically when temp_dir goes out of scope
@@ -526,7 +526,7 @@ message TestMessage {
         };
 
         // Create processor
-        let processor = ProtobufProcessor::new(&config).unwrap();
+        let processor = ProtobufProcessor::new(config).unwrap();
 
         // Create test protobuf message
         let proto_data = create_test_protobuf_message(&processor.descriptor);
@@ -568,7 +568,7 @@ message TestMessage {
         };
 
         // Create processor
-        let processor = ProtobufProcessor::new(&config).unwrap();
+        let processor = ProtobufProcessor::new(config).unwrap();
 
         // Create test Arrow batch
         let arrow_batch = create_test_arrow_batch();
@@ -611,7 +611,7 @@ message TestMessage {
         };
 
         // Create processor
-        let processor = ProtobufProcessor::new(&config).unwrap();
+        let processor = ProtobufProcessor::new(config).unwrap();
 
         // Test processing empty batch
         let empty_batch = MessageBatch::new_binary(vec![]);
@@ -637,7 +637,7 @@ message TestMessage {
         };
 
         // Create processor
-        let processor = ProtobufProcessor::new(&config).unwrap();
+        let processor = ProtobufProcessor::new(config).unwrap();
 
         // Create test protobuf message
         let proto_data = create_test_protobuf_message(&processor.descriptor);
@@ -678,7 +678,7 @@ message TestMessage {
         };
 
         // Create processor
-        let processor = ProtobufProcessor::new(&config).unwrap();
+        let processor = ProtobufProcessor::new(config).unwrap();
 
         // Create test Arrow batch
         let arrow_batch = create_test_arrow_batch();

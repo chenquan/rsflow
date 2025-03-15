@@ -150,7 +150,7 @@ mod tests {
             query: "SELECT * FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config);
+        let processor = SqlProcessor::new(config);
         assert!(processor.is_ok());
     }
 
@@ -161,7 +161,7 @@ mod tests {
             query: "SELECT * FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config)?;
+        let processor = SqlProcessor::new(config)?;
         let batch = create_test_batch();
         let msg_batch = MessageBatch::new_arrow(batch);
 
@@ -207,7 +207,7 @@ mod tests {
             query: "SELECT * FROM flow WHERE id > 1".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config)?;
+        let processor = SqlProcessor::new(config)?;
         let batch = create_test_batch();
         let msg_batch = MessageBatch::new_arrow(batch);
 
@@ -244,7 +244,7 @@ mod tests {
             query: "SELECT id FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config)?;
+        let processor = SqlProcessor::new(config)?;
         let batch = create_test_batch();
         let msg_batch = MessageBatch::new_arrow(batch);
 
@@ -282,7 +282,7 @@ mod tests {
             query: "SELECT * FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config)?;
+        let processor = SqlProcessor::new(config)?;
         let msg_batch = MessageBatch::new_empty();
 
         let result = processor.process(msg_batch).await?;
@@ -300,8 +300,8 @@ mod tests {
             query: "SELECT * FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config).unwrap();
-        let msg_batch = MessageBatch::new_binary(vec![1, 2, 3]);
+        let processor = SqlProcessor::new(config).unwrap();
+        let msg_batch = MessageBatch::new_binary(vec![]);
 
         let result = processor.process(msg_batch).await;
 
@@ -316,7 +316,7 @@ mod tests {
             query: "INVALID SQL".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config).unwrap();
+        let processor = SqlProcessor::new(config).unwrap();
         let batch = create_test_batch();
         let msg_batch = MessageBatch::new_arrow(batch);
 
@@ -333,7 +333,7 @@ mod tests {
             query: "SELECT * FROM custom_table".to_string(),
             table_name: Some("custom_table".to_string()),
         };
-        let processor = SqlProcessor::new(&config)?;
+        let processor = SqlProcessor::new(config)?;
         let batch = create_test_batch();
         let msg_batch = MessageBatch::new_arrow(batch);
 
@@ -358,7 +358,7 @@ mod tests {
             query: "SELECT * FROM flow".to_string(),
             table_name: None,
         };
-        let processor = SqlProcessor::new(&config).unwrap();
+        let processor = SqlProcessor::new(config).unwrap();
 
         // Verify that close returns Ok
         assert!(processor.close().await.is_ok());

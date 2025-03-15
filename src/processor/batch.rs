@@ -177,7 +177,7 @@ mod tests {
     async fn test_batch_size_control() -> Result<(), Error> {
         // Test batch size control with binary data
         let config = create_test_config(2, 1000, "binary");
-        let processor = BatchProcessor::new(&config)?;
+        let processor = BatchProcessor::new(config)?;
 
         // Process first message
         let msg1 = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
@@ -206,7 +206,7 @@ mod tests {
     async fn test_timeout_flush() -> Result<(), Error> {
         // Test timeout-based flush with short timeout
         let config = create_test_config(5, 100, "binary");
-        let processor = BatchProcessor::new(&config)?;
+        let processor = BatchProcessor::new(config)?;
 
         // Process one message and wait for timeout
         let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
@@ -236,7 +236,7 @@ mod tests {
     async fn test_invalid_data_type() -> Result<(), Error> {
         // Test error handling for mismatched data types
         let config = create_test_config(2, 1000, "arrow");
-        let processor = BatchProcessor::new(&config)?;
+        let processor = BatchProcessor::new(config)?;
 
         // Try to process binary message with arrow configuration
         let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型
@@ -255,7 +255,7 @@ mod tests {
     async fn test_close() -> Result<(), Error> {
         // Test processor cleanup
         let config = create_test_config(2, 1000, "binary");
-        let processor = BatchProcessor::new(&config)?;
+        let processor = BatchProcessor::new(config)?;
 
         // Add a message to the batch
         let msg = MessageBatch::new_binary(vec![vec![1u8, 2u8, 3u8]]); // 使用u8类型

@@ -16,10 +16,10 @@ streams:
     pipeline:
       thread_num: 4
       processors:
-        - type: json
+        - type: json_to_arrow
         - type: sql
           query: "SELECT * FROM flow"
-        - type: json
+        - type: arrow_to_json
 
     output:
       type: kafka

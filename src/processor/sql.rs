@@ -2,7 +2,7 @@
 //!
 //! DataFusion is used to process data with SQL queries.
 
-use crate::processor::Processor;
+use crate::processor::{register_processor_builder, Processor, ProcessorBuilder};
 use crate::{Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -30,10 +30,8 @@ pub struct SqlProcessor {
 
 impl SqlProcessor {
     /// Create a new SQL processor component.
-    pub fn new(config: &SqlProcessorConfig) -> Result<Self, Error> {
-        Ok(Self {
-            config: config.clone(),
-        })
+    pub fn new(config: SqlProcessorConfig) -> Result<Self, Error> {
+        Ok(Self { config })
     }
 
     /// Execute SQL query
@@ -104,6 +102,23 @@ impl Processor for SqlProcessor {
     }
 }
 
+pub(crate) struct SqlProcessorBuilder;
+impl ProcessorBuilder for SqlProcessorBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Batch processor configuration is missing".to_string(),
+            ));
+        }
+        let config: SqlProcessorConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(SqlProcessor::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("sql", Arc::new(SqlProcessorBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,7 +166,7 @@ mod tests {
         let msg_batch = MessageBatch::new_arrow(batch);
 
         let result = processor.process(msg_batch).await?;
-        
+
         // Verify the result
         assert_eq!(result.len(), 1);
         match &result[0].content {
@@ -159,7 +174,7 @@ mod tests {
                 // Check that all rows were returned
                 assert_eq!(record_batch.num_rows(), 3);
                 assert_eq!(record_batch.num_columns(), 2);
-                
+
                 // Check column values
                 let id_array = record_batch
                     .column(0)
@@ -171,7 +186,7 @@ mod tests {
                     .as_any()
                     .downcast_ref::<StringArray>()
                     .unwrap();
-                
+
                 assert_eq!(id_array.value(0), 1);
                 assert_eq!(id_array.value(1), 2);
                 assert_eq!(id_array.value(2), 3);
@@ -181,7 +196,7 @@ mod tests {
             }
             _ => panic!("Expected Arrow content"),
         }
-        
+
         Ok(())
     }
 
@@ -197,7 +212,7 @@ mod tests {
         let msg_batch = MessageBatch::new_arrow(batch);
 
         let result = processor.process(msg_batch).await?;
-        
+
         // Verify the result
         assert_eq!(result.len(), 1);
         match &result[0].content {
@@ -205,20 +220,20 @@ mod tests {
                 // Check that only filtered rows were returned
                 assert_eq!(record_batch.num_rows(), 2);
                 assert_eq!(record_batch.num_columns(), 2);
-                
+
                 // Check column values
                 let id_array = record_batch
                     .column(0)
                     .as_any()
                     .downcast_ref::<Int32Array>()
                     .unwrap();
-                
+
                 assert_eq!(id_array.value(0), 2);
                 assert_eq!(id_array.value(1), 3);
             }
             _ => panic!("Expected Arrow content"),
         }
-        
+
         Ok(())
     }
 
@@ -234,7 +249,7 @@ mod tests {
         let msg_batch = MessageBatch::new_arrow(batch);
 
         let result = processor.process(msg_batch).await?;
-        
+
         // Verify the result
         assert_eq!(result.len(), 1);
         match &result[0].content {
@@ -242,21 +257,21 @@ mod tests {
                 // Check that only the id column was returned
                 assert_eq!(record_batch.num_rows(), 3);
                 assert_eq!(record_batch.num_columns(), 1);
-                
+
                 // Check column values
                 let id_array = record_batch
                     .column(0)
                     .as_any()
                     .downcast_ref::<Int32Array>()
                     .unwrap();
-                
+
                 assert_eq!(id_array.value(0), 1);
                 assert_eq!(id_array.value(1), 2);
                 assert_eq!(id_array.value(2), 3);
             }
             _ => panic!("Expected Arrow content"),
         }
-        
+
         Ok(())
     }
 
@@ -271,10 +286,10 @@ mod tests {
         let msg_batch = MessageBatch::new_empty();
 
         let result = processor.process(msg_batch).await?;
-        
+
         // Verify that an empty result is returned
         assert_eq!(result.len(), 0);
-        
+
         Ok(())
     }
 
@@ -289,7 +304,7 @@ mod tests {
         let msg_batch = MessageBatch::new_binary(vec![1, 2, 3]);
 
         let result = processor.process(msg_batch).await;
-        
+
         // Verify that an error is returned
         assert!(matches!(result, Err(Error::Processing(_))));
     }
@@ -306,7 +321,7 @@ mod tests {
         let msg_batch = MessageBatch::new_arrow(batch);
 
         let result = processor.process(msg_batch).await;
-        
+
         // Verify that an error is returned
         assert!(matches!(result, Err(Error::Processing(_))));
     }
@@ -323,7 +338,7 @@ mod tests {
         let msg_batch = MessageBatch::new_arrow(batch);
 
         let result = processor.process(msg_batch).await?;
-        
+
         // Verify the result
         assert_eq!(result.len(), 1);
         match &result[0].content {
@@ -332,7 +347,7 @@ mod tests {
             }
             _ => panic!("Expected Arrow content"),
         }
-        
+
         Ok(())
     }
 
@@ -344,7 +359,7 @@ mod tests {
             table_name: None,
         };
         let processor = SqlProcessor::new(&config).unwrap();
-        
+
         // Verify that close returns Ok
         assert!(processor.close().await.is_ok());
     }

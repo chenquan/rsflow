@@ -39,9 +39,7 @@ protobuf = "3.7.2"
 
 # 配置和插件系统
 toml = "0.8"
-dyn-clone = "1.0"
 lazy_static = "1.4"
-regex = "1.8"
 
 # HTTP客户端/服务器
 axum = "0.6"
@@ -67,7 +65,7 @@ sasl2-sys = { version = "0.1.22", features = ["vendored"] }
 waitgroup = "0.1.2"
 
 [dev-dependencies]
-tempfile = "3.8.0"
+tempfile = "3.19.0"
 
 # 测试工具
 mockall = "0.12"

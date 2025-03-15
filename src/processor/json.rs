@@ -2,7 +2,7 @@
 //!
 //! A processor for converting between binary data and the Arrow format
 
-use crate::processor::Processor;
+use crate::processor::{register_processor_builder, Processor, ProcessorBuilder};
 use crate::{Bytes, Content, Error, MessageBatch};
 use async_trait::async_trait;
 use datafusion::arrow;
@@ -155,6 +155,24 @@ fn arrow_to_json(batch: &RecordBatch) -> Result<Vec<u8>, Error> {
     Ok(buf)
 }
 
+pub(crate) struct JsonToArrowProcessorBuilder;
+impl ProcessorBuilder for JsonToArrowProcessorBuilder {
+    fn build(&self, _: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        Ok(Arc::new(JsonToArrowProcessor))
+    }
+}
+pub(crate) struct ArrowToJsonProcessorBuilder;
+impl ProcessorBuilder for ArrowToJsonProcessorBuilder {
+    fn build(&self, _: &Option<serde_json::Value>) -> Result<Arc<dyn Processor>, Error> {
+        Ok(Arc::new(ArrowToJsonProcessor))
+    }
+}
+
+pub fn init() {
+    register_processor_builder("arrow_to_json", Arc::new(ArrowToJsonProcessorBuilder));
+    register_processor_builder("json_to_arrow", Arc::new(JsonToArrowProcessorBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,13 +204,13 @@ mod tests {
         // Test successful conversion from JSON to Arrow
         let processor = JsonToArrowProcessor;
         let json_data = create_test_json();
-        
+
         // Create a message batch with binary content
         let msg_batch = MessageBatch::new_binary(vec![json_data]);
-        
+
         // Process the message batch
         let result = processor.process(msg_batch).await.unwrap();
-        
+
         // Verify the result
         assert_eq!(result.len(), 1, "Should return one message batch");
         match &result[0].content {
@@ -200,7 +218,7 @@ mod tests {
                 // Verify the schema and data
                 assert_eq!(batch.num_rows(), 1, "Should have one row");
                 assert_eq!(batch.num_columns(), 8, "Should have 8 columns");
-                
+
                 // Verify column names
                 let schema = batch.schema();
                 let field_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
@@ -222,10 +240,10 @@ mod tests {
         // Test with empty input
         let processor = JsonToArrowProcessor;
         let msg_batch = MessageBatch::new_binary(vec![]);
-        
+
         // Process the message batch
         let result = processor.process(msg_batch).await.unwrap();
-        
+
         // Verify the result
         assert!(result.is_empty(), "Should return empty result for empty input");
     }
@@ -235,10 +253,10 @@ mod tests {
         // Test with invalid JSON input
         let processor = JsonToArrowProcessor;
         let invalid_json = b"{invalid json";
-        
+
         // Create a message batch with invalid JSON content
         let msg_batch = MessageBatch::new_binary(vec![invalid_json.to_vec()]);
-        
+
         // Process the message batch should fail
         let result = processor.process(msg_batch).await;
         assert!(result.is_err(), "Should return error for invalid JSON");
@@ -249,10 +267,10 @@ mod tests {
         // Test with JSON that is not an object (e.g., array)
         let processor = JsonToArrowProcessor;
         let array_json = serde_json::to_vec(&[1, 2, 3]).unwrap();
-        
+
         // Create a message batch with array JSON content
         let msg_batch = MessageBatch::new_binary(vec![array_json]);
-        
+
         // Process the message batch should fail
         let result = processor.process(msg_batch).await;
         assert!(result.is_err(), "Should return error for non-object JSON");
@@ -262,15 +280,15 @@ mod tests {
     async fn test_json_to_arrow_processor_wrong_content_type() {
         // Test with Arrow content instead of Binary
         let processor = JsonToArrowProcessor;
-        
+
         // Create a simple Arrow record batch
         let schema = Arc::new(Schema::new(vec![Field::new("test", DataType::Utf8, false)]));
-        let columns: Vec<ArrayRef> = vec![Arc::new(StringArray::from(vec!["test"]))]; 
+        let columns: Vec<ArrayRef> = vec![Arc::new(StringArray::from(vec!["test"]))];
         let record_batch = RecordBatch::try_new(schema, columns).unwrap();
-        
+
         // Create a message batch with Arrow content
         let msg_batch = MessageBatch::new_arrow(record_batch);
-        
+
         // Process the message batch should fail
         let result = processor.process(msg_batch).await;
         assert!(result.is_err(), "Should return error for Arrow content");
@@ -280,47 +298,47 @@ mod tests {
     async fn test_arrow_to_json_processor_success() {
         // Test successful conversion from Arrow to JSON
         let processor = ArrowToJsonProcessor;
-        
+
         // Create a simple Arrow record batch
         let schema = Arc::new(Schema::new(vec![
             Field::new("string_field", DataType::Utf8, false),
             Field::new("int_field", DataType::Int64, false),
             Field::new("bool_field", DataType::Boolean, false),
         ]));
-        
+
         let columns: Vec<ArrayRef> = vec![
             Arc::new(StringArray::from(vec!["test"])),
             Arc::new(Int64Array::from(vec![42])),
             Arc::new(BooleanArray::from(vec![true])),
         ];
-        
+
         let record_batch = RecordBatch::try_new(schema, columns).unwrap();
-        
+
         // Create a message batch with Arrow content
         let msg_batch = MessageBatch::new_arrow(record_batch);
-        
+
         // Process the message batch
         let result = processor.process(msg_batch).await.unwrap();
-        
+
         // Verify the result
         assert_eq!(result.len(), 1, "Should return one message batch");
         match &result[0].content {
             Content::Binary(v) => {
                 assert_eq!(v.len(), 1, "Should have one binary item");
-                
+
                 // Parse the JSON to verify content
                 let json_str = String::from_utf8_lossy(&v[0]);
                 let json_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-                
+
                 // Verify it's a valid JSON array with one object
                 assert!(json_value.is_array(), "Should be a JSON array");
                 let array = json_value.as_array().unwrap();
                 assert_eq!(array.len(), 1, "Should have one object in array");
-                
+
                 let obj = &array[0];
                 assert!(obj.is_object(), "Should be a JSON object");
                 let obj_map = obj.as_object().unwrap();
-                
+
                 // Verify fields
                 assert_eq!(obj_map["string_field"], "test");
                 assert_eq!(obj_map["int_field"], 42);
@@ -335,10 +353,10 @@ mod tests {
         // Test with Binary content instead of Arrow
         let processor = ArrowToJsonProcessor;
         let binary_data = vec![1, 2, 3];
-        
+
         // Create a message batch with Binary content
         let msg_batch = MessageBatch::new_binary(vec![binary_data]);
-        
+
         // Process the message batch should fail
         let result = processor.process(msg_batch).await;
         assert!(result.is_err(), "Should return error for Binary content");
@@ -349,11 +367,11 @@ mod tests {
         // Test the json_to_arrow function directly
         let json_data = create_test_json();
         let result = json_to_arrow(&json_data).unwrap();
-        
+
         // Verify the result
         assert_eq!(result.num_rows(), 1, "Should have one row");
         assert_eq!(result.num_columns(), 8, "Should have 8 columns");
-        
+
         // Verify specific values
         let schema = result.schema();
         for (i, field) in schema.fields().iter().enumerate() {
@@ -382,29 +400,29 @@ mod tests {
         let schema = Arc::new(Schema::new(vec![
             Field::new("test_field", DataType::Utf8, false),
         ]));
-        
+
         let columns: Vec<ArrayRef> = vec![
             Arc::new(StringArray::from(vec!["test_value"])),
         ];
-        
+
         let record_batch = RecordBatch::try_new(schema, columns).unwrap();
-        
+
         // Convert to JSON
         let json_bytes = arrow_to_json(&record_batch).unwrap();
-        
+
         // Verify the result
         let json_str = String::from_utf8_lossy(&json_bytes);
         let json_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
-        
+
         // Verify it's a valid JSON array with one object
         assert!(json_value.is_array(), "Should be a JSON array");
         let array = json_value.as_array().unwrap();
         assert_eq!(array.len(), 1, "Should have one object in array");
-        
+
         let obj = &array[0];
         assert!(obj.is_object(), "Should be a JSON object");
         let obj_map = obj.as_object().unwrap();
-        
+
         // Verify field
         assert_eq!(obj_map["test_field"], "test_value");
     }

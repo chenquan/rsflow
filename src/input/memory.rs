@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::input::Ack;
 use crate::input::NoopAck;
+use crate::input::{register_input_builder, Ack, InputBuilder};
 use crate::{input::Input, Error, MessageBatch};
 
 /// Memory input configuration
@@ -29,7 +29,7 @@ pub struct MemoryInput {
 
 impl MemoryInput {
     /// Create a new memory input component
-    pub fn new(config: &MemoryInputConfig) -> Result<Self, Error> {
+    pub fn new(config: MemoryInputConfig) -> Result<Self, Error> {
         let mut queue = VecDeque::new();
 
         // If there is an initial message in the configuration, it is added to the queue
@@ -87,6 +87,23 @@ impl Input for MemoryInput {
     }
 }
 
+pub(crate) struct MemoryInputBuilder;
+impl InputBuilder for MemoryInputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Input>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "Memory input configuration is missing".to_string(),
+            ));
+        }
+        let config: MemoryInputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(MemoryInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("memory", Arc::new(MemoryInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,7 +112,7 @@ mod tests {
     async fn test_memory_input_new() {
         // Test creating MemoryInput instance without initial messages
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config);
+        let input = MemoryInput::new(config);
         assert!(input.is_ok());
 
         // Test creating MemoryInput instance with initial messages
@@ -103,14 +120,14 @@ mod tests {
         let config = MemoryInputConfig {
             messages: Some(messages),
         };
-        let input = MemoryInput::new(&config);
+        let input = MemoryInput::new(config);
         assert!(input.is_ok());
     }
 
     #[tokio::test]
     async fn test_memory_input_connect() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Test connection
         let result = input.connect().await;
@@ -123,7 +140,7 @@ mod tests {
     #[tokio::test]
     async fn test_memory_input_read_without_connect() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Reading without connection should return an error
         let result = input.read().await;
@@ -137,7 +154,7 @@ mod tests {
     #[tokio::test]
     async fn test_memory_input_read_empty_queue() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());
@@ -157,7 +174,7 @@ mod tests {
         let config = MemoryInputConfig {
             messages: Some(messages),
         };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());
@@ -184,7 +201,7 @@ mod tests {
     #[tokio::test]
     async fn test_memory_input_push() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());
@@ -210,7 +227,7 @@ mod tests {
     #[tokio::test]
     async fn test_memory_input_close() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());
@@ -232,7 +249,7 @@ mod tests {
     #[tokio::test]
     async fn test_memory_input_multiple_push_read() {
         let config = MemoryInputConfig { messages: None };
-        let input = MemoryInput::new(&config).unwrap();
+        let input = MemoryInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());

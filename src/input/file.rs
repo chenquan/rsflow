@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::input::{Ack, NoopAck};
+use crate::input::{register_input_builder, Ack, InputBuilder, NoopAck};
 use crate::{input::Input, Error, MessageBatch};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,9 +35,9 @@ pub struct FileInput {
 
 impl FileInput {
     /// Create a new file input component
-    pub fn new(config: &FileInputConfig) -> Result<Self, Error> {
+    pub fn new(config: FileInputConfig) -> Result<Self, Error> {
         Ok(Self {
-            config: config.clone(),
+            config,
             reader: Arc::new(Mutex::new(None)),
             connected: AtomicBool::new(false),
             eof_reached: AtomicBool::new(false),
@@ -51,8 +51,9 @@ impl Input for FileInput {
         let path = Path::new(&self.config.path);
 
         // Open the file
-        let file = File::open(path)
-            .map_err(|e| Error::Connection(format!("Unable to open file {}: {}", self.config.path, e)))?;
+        let file = File::open(path).map_err(|e| {
+            Error::Connection(format!("Unable to open file {}: {}", self.config.path, e))
+        })?;
 
         let mut reader = BufReader::new(file);
 
@@ -124,6 +125,24 @@ impl Input for FileInput {
     }
 }
 
+pub(crate) struct FileInputBuilder;
+impl InputBuilder for FileInputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Input>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "File input configuration is missing".to_string(),
+            ));
+        }
+
+        let config: FileInputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(FileInput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_input_builder("file", Arc::new(FileInputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,7 +157,7 @@ mod tests {
             close_on_eof: Some(true),
             start_from_beginning: Some(true),
         };
-        let input = FileInput::new(&config);
+        let input = FileInput::new(config);
         assert!(input.is_ok());
     }
 
@@ -149,7 +168,7 @@ mod tests {
             close_on_eof: Some(true),
             start_from_beginning: Some(true),
         };
-        let input = FileInput::new(&config).unwrap();
+        let input = FileInput::new(config).unwrap();
         let result = input.connect().await;
         assert!(result.is_err());
         match result {
@@ -165,7 +184,7 @@ mod tests {
             close_on_eof: Some(true),
             start_from_beginning: Some(true),
         };
-        let input = FileInput::new(&config).unwrap();
+        let input = FileInput::new(config).unwrap();
         let result = input.read().await;
         assert!(result.is_err());
         match result {
@@ -194,7 +213,7 @@ mod tests {
             close_on_eof: Some(true),
             start_from_beginning: Some(true),
         };
-        let input = FileInput::new(&config).unwrap();
+        let input = FileInput::new(config).unwrap();
 
         // Connect and read
         assert!(input.connect().await.is_ok());
@@ -241,7 +260,7 @@ mod tests {
             close_on_eof: Some(true),
             start_from_beginning: Some(false),
         };
-        let input = FileInput::new(&config).unwrap();
+        let input = FileInput::new(config).unwrap();
 
         // Connect
         assert!(input.connect().await.is_ok());
@@ -265,7 +284,7 @@ mod tests {
 
         // Now should be able to read the newly added line
         let result = input.read().await;
-        assert!(matches!(result, Err(Error::Done))); 
+        assert!(matches!(result, Err(Error::Done)));
 
         // Close the connection
         assert!(input.close().await.is_ok());
@@ -289,7 +308,7 @@ mod tests {
             close_on_eof: Some(false),
             start_from_beginning: Some(true),
         };
-        let input = FileInput::new(&config).unwrap();
+        let input = FileInput::new(config).unwrap();
 
         // Connect and read
         assert!(input.connect().await.is_ok());

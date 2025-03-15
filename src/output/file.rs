@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::output::{register_output_builder, OutputBuilder};
 use crate::{output::Output, Error, MessageBatch};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ pub struct FileOutput {
 
 impl FileOutput {
     /// Create a new file output component
-    pub fn new(config: &FileOutputConfig) -> Result<Self, Error> {
+    pub fn new(config: FileOutputConfig) -> Result<Self, Error> {
         Ok(Self {
             config: config.clone(),
             writer: Arc::new(Mutex::new(None)),
@@ -102,6 +103,24 @@ impl Output for FileOutput {
     }
 }
 
+pub(crate) struct FileOutputBuilder;
+impl OutputBuilder for FileOutputBuilder {
+    fn build(&self, config: &Option<serde_json::Value>) -> Result<Arc<dyn Output>, Error> {
+        if config.is_none() {
+            return Err(Error::Config(
+                "File output configuration is missing".to_string(),
+            ));
+        }
+
+        let config: FileOutputConfig = serde_json::from_value(config.clone().unwrap())?;
+        Ok(Arc::new(FileOutput::new(config)?))
+    }
+}
+
+pub fn init() {
+    register_output_builder("file", Arc::new(FileOutputBuilder));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,7 +139,7 @@ mod tests {
             append: Some(false),
         };
 
-        let output = FileOutput::new(&config).unwrap();
+        let output = FileOutput::new(config).unwrap();
         output.connect().await.unwrap();
 
         let msg = MessageBatch::from_string("test content");
@@ -143,7 +162,7 @@ mod tests {
             append: Some(true),
         };
 
-        let output = FileOutput::new(&config).unwrap();
+        let output = FileOutput::new(config).unwrap();
         output.connect().await.unwrap();
 
         // First write
@@ -174,7 +193,7 @@ mod tests {
             append: Some(false),
         };
 
-        let output = FileOutput::new(&config).unwrap();
+        let output = FileOutput::new(config).unwrap();
         output.connect().await.unwrap();
         output
             .write(&MessageBatch::from_string("no_newline"))
@@ -195,7 +214,7 @@ mod tests {
             append: Some(false),
         };
 
-        let output = FileOutput::new(&config).unwrap();
+        let output = FileOutput::new(config).unwrap();
         let result = output.connect().await;
         assert!(matches!(result, Err(Error::Io(_))));
     }

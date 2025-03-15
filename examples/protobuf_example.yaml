@@ -14,8 +14,7 @@ streams:
     pipeline:
       thread_num: 4
       processors:
-        - type: "json"
-          mode: "to_arrow"
+        - type: "json_to_arrow"
         - type: "sql"
           # SQL查询语句，支持标准SQL语法
           query: "SELECT count(timestamp) as timestamp, sum(value) as value, cast(count(sensor) as string) as  sensor FROM flow WHERE value >= 10 order by sensor"
@@ -29,8 +28,7 @@ streams:
           proto_inputs:
             - "examples/"
           message_type: "message.Message"
-        - type: "json"
-          mode: "from_arrow"
+        - type: "arrow_to_json"
 
     output:
       type: "stdout"

@@ -283,7 +283,7 @@ mod tests {
             table_name: None,
         };
         let processor = SqlProcessor::new(config)?;
-        let msg_batch = MessageBatch::new_empty();
+        let msg_batch = MessageBatch::new_binary(vec![]);
 
         let result = processor.process(msg_batch).await?;
 
@@ -301,7 +301,7 @@ mod tests {
             table_name: None,
         };
         let processor = SqlProcessor::new(config).unwrap();
-        let msg_batch = MessageBatch::new_binary(vec![]);
+        let msg_batch = MessageBatch::new_binary(vec![vec![1]]);
 
         let result = processor.process(msg_batch).await;
 
